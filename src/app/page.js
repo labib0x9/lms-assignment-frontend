@@ -1,67 +1,52 @@
-import Image from "next/image";
+import Link from "next/link";
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.js
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <div className="min-h-screen bg-[#faf9f6] text-[#0a192f] flex flex-col selection:bg-amber-200 selection:text-amber-900">
+      {/* 1. Navbar */}
+      <header className="w-full border-b border-slate-200/80 bg-[#faf9f6]/90 backdrop-blur-xs sticky top-0 z-50">
+        <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
+          {/* Left: Project name as plain text / wordmark */}
+          <Link
+            href="/"
+            className="text-xl font-bold tracking-tight text-[#0a192f] hover:opacity-85 transition-opacity"
+          >
+            Academy
+          </Link>
+
+          {/* Right: Blogs & Login outline buttons */}
+          <div className="flex items-center gap-3">
+            <Link
+              href="/blogs"
+              className="px-4 py-1.5 text-sm font-medium text-[#0a192f] border border-slate-300 rounded-lg hover:bg-slate-100/80 hover:border-slate-400 transition-colors"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+              Blogs
+            </Link>
+            <Link
+              href="/login"
+              className="px-4 py-1.5 text-sm font-medium text-[#0a192f] border border-slate-300 rounded-lg hover:bg-slate-100/80 hover:border-slate-400 transition-colors"
             >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+              Login
+            </Link>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </header>
+
+      {/* 2. Summary Section */}
+      <main className="flex-1 flex flex-col justify-center max-w-5xl mx-auto px-6 py-24 sm:py-32 w-full">
+        <div className="max-w-3xl space-y-6">
+          {/* Headline: mostly dark navy with a soft highlight pill in warm accent color */}
+          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-[#0a192f] leading-[1.25] sm:leading-[1.2]">
+            Academy is a focused learning platform for{" "}
+            <span className="inline-flex items-center px-3 py-1 rounded-full text-xl sm:text-3xl lg:text-4xl font-semibold bg-amber-100 text-amber-900 border border-amber-300/70 align-baseline mx-0.5 sm:mx-1 shadow-xs">
+              mastering Backend Engineering
+            </span>
+          </h1>
+
+          {/* Plain 1-2 sentence paragraph summary */}
+          {/* <p className="text-lg sm:text-xl text-slate-600 leading-relaxed font-normal max-w-2xl pt-2">
+            An open environment built for students and educators to organize course materials, track assignment progress, and deliver feedback without distraction.
+          </p> */}
         </div>
       </main>
     </div>
