@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { loginUser } from "@/lib/api";
+import { registerUser } from "@/lib/api";
 
 const ROLES = [
   { id: "student", label: "Student" },
@@ -12,40 +12,60 @@ const ROLES = [
   { id: "admin", label: "Admin" },
 ];
 
-export default function LoginPage() {
+export default function SignupPage() {
   const router = useRouter();
   const [selectedRole, setSelectedRole] = useState("student");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
-  const handleLogin = async (e) => {
+  const handleSignup = async (e) => {
     e.preventDefault();
     setErrorMessage("");
     setSuccessMessage("");
+
+    // Validate that passwords match
+    if (password !== confirmPassword) {
+      setErrorMessage("Passwords do not match. Please ensure both fields are identical.");
+      return;
+    }
+
+    if (password.length < 6) {
+      setErrorMessage("Password must be at least 6 characters long.");
+      return;
+    }
+
     setIsLoading(true);
 
-    const result = await loginUser({
-      identifier: email,
-      email,
-      password,
+    const result = await registerUser({
+      username: username,
+      name: username,
+      email: email,
+      password: password,
       role: selectedRole,
     });
 
     setIsLoading(false);
 
     if (result.success) {
-      const user = result.data?.user;
-      const roleName = user?.role?.name || ROLES.find((r) => r.id === selectedRole)?.label || "Student";
-      setSuccessMessage(`Welcome back, ${user?.username || email}! Logged in as ${roleName}. Redirecting to dashboard...`);
-
-      // Automatically redirect to the dashboard after 800ms
-      setTimeout(() => {
-        router.push("/dashboard");
-      }, 800);
+      if (result.data?.jwt) {
+        // 🎓 Student: has JWT -> go to dashboard
+        setSuccessMessage("Account created! Redirecting to dashboard...");
+        setTimeout(() => router.push("/dashboard"), 800);
+      } else {
+        // 👨‍🏫 Instructor / Admin: pending approval -> go to login
+        setSuccessMessage(
+          result.data?.message ||
+            "Application submitted! Please wait for administrator approval before logging in."
+        );
+        setTimeout(() => router.push("/login"), 2500);
+      }
     } else {
       setErrorMessage(result.error);
     }
@@ -53,7 +73,6 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-[#faf9f6] text-[#0a192f] flex flex-col selection:bg-amber-200 selection:text-amber-900">
-      {/* Top Navigation */}
       <header className="w-full border-b border-slate-200/80 bg-[#faf9f6]/90 backdrop-blur-xs sticky top-0 z-50">
         <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
           <Link
@@ -64,38 +83,30 @@ export default function LoginPage() {
           </Link>
           <div className="flex items-center gap-3">
             <Link
-              href="/signup"
+              href="/login"
               className="px-3.5 py-1.5 text-sm font-medium text-[#0a192f] border border-slate-300 rounded-lg hover:bg-slate-100/80 transition-colors"
             >
-              Create Account
-            </Link>
-            <Link
-              href="/"
-              className="text-sm font-medium text-slate-600 hover:text-slate-900 px-2 py-1.5"
-            >
-              Home
+              Sign In
             </Link>
           </div>
         </div>
       </header>
 
-      {/* Main Login Form */}
       <main className="flex-1 flex items-center justify-center px-4 py-12 sm:py-16">
         <div className="w-full max-w-lg bg-white border border-slate-200/90 rounded-2xl shadow-sm p-6 sm:p-8 space-y-6">
-          {/* Header */}
           <div className="text-center space-y-1.5">
             <h1 className="text-2xl sm:text-3xl font-bold text-[#0a192f] tracking-tight">
-              Sign in to Academy
+              Create an Academy Account
             </h1>
             <p className="text-sm text-slate-500">
-              Select your role and enter your credentials to continue
+              Select your role and enter your details to register
             </p>
           </div>
 
           {/* 4 Roles Selector */}
           <div className="space-y-2">
             <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Select Role
+              Register As
             </label>
             <div className="grid grid-cols-2 gap-2">
               {ROLES.map((role) => {
@@ -124,9 +135,9 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* Alerts: Error & Success */}
+          {/* Alerts */}
           {errorMessage && (
-            <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 flex items-start gap-2.5">
+            <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-start gap-2.5">
               <svg
                 className="w-5 h-5 text-red-500 shrink-0 mt-0.5"
                 fill="none"
@@ -141,7 +152,7 @@ export default function LoginPage() {
                 />
               </svg>
               <div>
-                <p className="font-medium">Authentication Notice</p>
+                <p className="font-medium">Registration Notice</p>
                 <p className="text-xs text-red-600 mt-0.5">{errorMessage}</p>
               </div>
             </div>
@@ -166,52 +177,49 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* Login Form */}
-          <form onSubmit={handleLogin} className="space-y-4">
-            {/* Identifier / Email Field */}
+          {/* Form */}
+          <form onSubmit={handleSignup} className="space-y-4">
             <div className="space-y-1.5">
-              <label
-                htmlFor="email"
-                className="block text-sm font-medium text-[#0a192f]"
-              >
-                Email or Username
+              <label className="block text-sm font-medium text-[#0a192f]">
+                Username / Full Name
               </label>
               <input
-                id="email"
                 type="text"
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="labibfaisal9834@gmail.com"
-                className="w-full px-3.5 py-2.5 text-sm bg-slate-50/50 border border-slate-300 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white transition-all"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="kanu apu"
+                className="w-full px-3.5 py-2.5 text-sm bg-slate-50/50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
               />
             </div>
 
-            {/* Password Field */}
             <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label
-                  htmlFor="password"
-                  className="block text-sm font-medium text-[#0a192f]"
-                >
-                  Password
-                </label>
-                <Link
-                  href="/forgot-password"
-                  className="text-xs font-medium text-amber-900 hover:text-amber-700 hover:underline"
-                >
-                  Forgot password?
-                </Link>
-              </div>
+              <label className="block text-sm font-medium text-[#0a192f]">
+                Email address
+              </label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="admin@example.com"
+                className="w-full px-3.5 py-2.5 text-sm bg-slate-50/50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
+              />
+            </div>
+
+            {/* Password */}
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-[#0a192f]">
+                Password
+              </label>
               <div className="relative">
                 <input
-                  id="password"
                   type={showPassword ? "text" : "password"}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50/50 border border-slate-300 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white transition-all pr-10"
+                  placeholder="password!1A"
+                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50/50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white pr-10"
                 />
                 <button
                   type="button"
@@ -223,11 +231,34 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Submit Button */}
+            {/* Confirm Password */}
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-[#0a192f]">
+                Confirm Password
+              </label>
+              <div className="relative">
+                <input
+                  type={showConfirmPassword ? "text" : "password"}
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Repeat your password"
+                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50/50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-medium"
+                >
+                  {showConfirmPassword ? "Hide" : "Show"}
+                </button>
+              </div>
+            </div>
+
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-2.5 px-4 bg-[#0a192f] hover:bg-[#12284b] text-white font-medium text-sm rounded-xl transition-colors shadow-xs flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+              className="w-full py-2.5 px-4 bg-[#0a192f] hover:bg-[#12284b] text-white font-medium text-sm rounded-xl transition-colors shadow-xs disabled:opacity-70 flex items-center justify-center gap-2"
             >
               {isLoading ? (
                 <>
@@ -250,24 +281,20 @@ export default function LoginPage() {
                       d="M4 12a8 8 0 018-8v8H4z"
                     ></path>
                   </svg>
-                  <span>Verifying credentials...</span>
+                  <span>Creating account...</span>
                 </>
               ) : (
                 <span>
-                  Sign In as {ROLES.find((r) => r.id === selectedRole)?.label}
+                  Sign Up as {ROLES.find((r) => r.id === selectedRole)?.label}
                 </span>
               )}
             </button>
           </form>
 
-          {/* Footer: Sign up prompt */}
           <div className="pt-2 text-center text-xs text-slate-500 border-t border-slate-100">
-            Don&apos;t have an account yet?{" "}
-            <Link
-              href="/signup"
-              className="font-semibold text-amber-900 hover:underline"
-            >
-              Sign up
+            Already have an account?{" "}
+            <Link href="/login" className="font-semibold text-amber-900 hover:underline">
+              Sign in
             </Link>
           </div>
         </div>
