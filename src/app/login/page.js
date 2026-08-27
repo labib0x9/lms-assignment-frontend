@@ -34,6 +34,20 @@ const DEMO_ACCOUNTS = [
     role: "instructor",
     color: "bg-purple-50 text-purple-900 border-purple-200 hover:bg-purple-100",
   },
+  {
+    label: "Content Manager",
+    identifier: "content1@gmail.com",
+    password: "Password!1Aa",
+    role: "content_manager",
+    color: "bg-emerald-50 text-emerald-900 border-emerald-200 hover:bg-emerald-100",
+  },
+  {
+    label: "Admin",
+    identifier: "admin1@gmail.com",
+    password: "Password!1Aa",
+    role: "admin",
+    color: "bg-rose-50 text-rose-900 border-rose-200 hover:bg-rose-100",
+  },
 ];
 
 export default function LoginPage() {
@@ -126,9 +140,9 @@ export default function LoginPage() {
           {/* Quick Demo Logins Box */}
           <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl space-y-2">
             <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
-              Quick Demo Accounts (Click to Fill)
+              Quick Demo Accounts (Click to Autofill)
             </p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {DEMO_ACCOUNTS.map((demo, idx) => (
                 <button
                   key={idx}
