@@ -319,6 +319,140 @@ export async function deleteCourse(documentIdOrId) {
 }
 
 /**
+ * Fetch a single course by documentId (includes populated lessons, instructors, etc.)
+ * @param {string|number} documentIdOrId
+ */
+export async function fetchCourseById(documentIdOrId) {
+  try {
+    const token = getAuthToken();
+    const headers = {
+      "Content-Type": "application/json",
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/api/courses/${documentIdOrId}?populate=*`, {
+      method: "GET",
+      headers,
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const errorMsg =
+        data.error?.message ||
+        data.message ||
+        `Failed to fetch course (${response.status})`;
+      throw new Error(errorMsg);
+    }
+
+    return { success: true, data: data.data || data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || "Failed to fetch course details.",
+    };
+  }
+}
+
+/**
+ * Create a new lesson attached to a course
+ * @param {Object} lessonData - { title, contents, url, course: courseDocumentId }
+ */
+export async function createLesson(lessonData) {
+  try {
+    const token = getAuthToken();
+    if (!token) {
+      throw new Error("You must be logged in to create a lesson.");
+    }
+
+    const response = await fetch(`${API_BASE_URL}/api/lessons`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        data: {
+          title: lessonData.title,
+          contents: lessonData.contents,
+          // url: lessonData.url,
+          course: lessonData.course, // Course documentId
+        },
+      }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error?.message || data.message || "Failed to create lesson");
+    }
+    return { success: true, data: data.data || data };
+  } catch (error) {
+    return { success: false, error: error.message || "Failed to create lesson" };
+  }
+}
+
+/**
+ * Update an existing lesson
+ * @param {string} lessonDocId - Lesson documentId
+ * @param {Object} lessonData - { title, contents, url }
+ */
+export async function updateLesson(lessonDocId, lessonData) {
+  try {
+    const token = getAuthToken();
+    if (!token) {
+      throw new Error("You must be logged in to update a lesson.");
+    }
+
+    const response = await fetch(`${API_BASE_URL}/api/lessons/${lessonDocId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ data: lessonData }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error?.message || data.message || "Failed to update lesson");
+    }
+    return { success: true, data: data.data || data };
+  } catch (error) {
+    return { success: false, error: error.message || "Failed to update lesson" };
+  }
+}
+
+/**
+ * Delete a lesson
+ * @param {string} lessonDocId - Lesson documentId
+ */
+export async function deleteLesson(lessonDocId) {
+  try {
+    const token = getAuthToken();
+    if (!token) {
+      throw new Error("You must be logged in to delete a lesson.");
+    }
+
+    const response = await fetch(`${API_BASE_URL}/api/lessons/${lessonDocId}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error?.message || data.message || "Failed to delete lesson");
+    }
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message || "Failed to delete lesson" };
+  }
+}
+
+/**
  * Helper to get currently logged in user from localStorage
  */
 export function getCurrentUser() {

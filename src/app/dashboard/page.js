@@ -8,8 +8,6 @@ import {
   logoutUser,
   fetchCourses,
   createCourse,
-  updateCourse,
-  deleteCourse,
 } from "@/lib/api";
 
 export default function DashboardPage() {
@@ -27,18 +25,14 @@ export default function DashboardPage() {
   // Student enrollment tracking
   const [enrolledCourseIds, setEnrolledCourseIds] = useState([]);
 
-  // Course Modal state (Create / Edit)
+  // Course Modal state (Create)
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [editingCourse, setEditingCourse] = useState(null); // null = Create, object = Edit
   const [courseForm, setCourseForm] = useState({
     title: "",
     description: "",
     price: "",
   });
-
-  // Course Details View Modal state
-  const [viewingCourse, setViewingCourse] = useState(null);
 
   // Load user session
   useEffect(() => {
@@ -103,13 +97,13 @@ export default function DashboardPage() {
 
   // Match current active user's documentId with the course's Instructors list
   const isOwnerOfCourse = (course) => {
-    if (isAdmin || isContentManager) return true; // Admins can manage all
+    if (isAdmin || isContentManager) return true; // Admins & Content Managers have access
     if (!isInstructor) return false;
 
     const currentDocId = user?.documentId;
     const currentId = user?.id;
 
-    // Check Instructors array (from Strapi relation: course.Instructors or course.instructors)
+    // Check Instructors array
     const instructorsList =
       course.Instructors ||
       course.instructors ||
@@ -139,82 +133,33 @@ export default function DashboardPage() {
 
   // Open Create Modal
   const openCreateModal = () => {
-    setEditingCourse(null);
     setCourseForm({ title: "", description: "", price: "" });
     setActionError("");
     setIsModalOpen(true);
   };
 
-  // Open Edit Modal
-  const openEditModal = (course) => {
-    setEditingCourse(course);
-    setCourseForm({
-      title: course.title || "",
-      description: course.description || "",
-      price: course.price !== undefined ? course.price : "",
-    });
-    setActionError("");
-    setIsModalOpen(true);
-  };
-
-  // Submit Create / Edit Course
+  // Submit Create Course
   const handleCourseSubmit = async (e) => {
     e.preventDefault();
     setActionError("");
     setActionSuccess("");
     setIsSubmitting(true);
 
-    const docId = editingCourse?.documentId || editingCourse?.id;
-
-    let result;
-    if (editingCourse) {
-      result = await updateCourse(docId, {
-        title: courseForm.title,
-        description: courseForm.description,
-        price: courseForm.price,
-      });
-    } else {
-      result = await createCourse({
-        title: courseForm.title,
-        description: courseForm.description,
-        price: courseForm.price,
-      });
-    }
+    const result = await createCourse({
+      title: courseForm.title,
+      description: courseForm.description,
+      price: courseForm.price,
+    });
 
     setIsSubmitting(false);
 
     if (result.success) {
       setIsModalOpen(false);
-      setActionSuccess(
-        editingCourse
-          ? `Course "${courseForm.title}" updated successfully!`
-          : `Course "${courseForm.title}" created successfully!`
-      );
+      setActionSuccess(`Course "${courseForm.title}" created successfully!`);
       await loadCourses();
       setTimeout(() => setActionSuccess(""), 4000);
     } else {
       setActionError(result.error);
-    }
-  };
-
-  // Delete Course
-  const handleDeleteCourse = async (course) => {
-    const docId = course.documentId || course.id;
-    if (!window.confirm(`Are you sure you want to delete "${course.title}"?`)) {
-      return;
-    }
-
-    setActionError("");
-    setActionSuccess("");
-
-    const result = await deleteCourse(docId);
-    if (result.success) {
-      setActionSuccess(`Course "${course.title}" deleted.`);
-      await loadCourses();
-      setTimeout(() => setActionSuccess(""), 4000);
-    } else {
-      setActionError(result.error);
-      setTimeout(() => setActionError(""), 5000);
     }
   };
 
@@ -308,11 +253,11 @@ export default function DashboardPage() {
             </h1>
             <p className="text-sm text-slate-600">
               {isInstructor &&
-                "Manage your authored courses, update lesson content, or create a new course."}
+                "Manage your courses, view curriculum, and publish new programs."}
               {isStudent &&
                 "Explore available engineering courses, track your enrollments, and start learning."}
               {(isAdmin || isContentManager) &&
-                "Full administration access to manage, publish, and delete all courses."}
+                "Platform administration portal for managing courses and curriculum."}
             </p>
           </div>
 
@@ -403,14 +348,14 @@ export default function DashboardPage() {
               {isStudent
                 ? enrolledCourseIds.length
                 : isInstructor
-                ? "Author & Editor"
-                : "Full Admin Access"}
+                ? "Author & Instructor"
+                : "Platform Administration"}
             </p>
             <p className="text-xs text-slate-500">
               {isStudent
                 ? "Active learning programs"
                 : isInstructor
-                ? "Edit/Delete enabled only for your courses"
+                ? "Course management and lesson authoring"
                 : "Platform-wide management enabled"}
             </p>
           </div>
@@ -434,11 +379,7 @@ export default function DashboardPage() {
                 {(isAdmin || isContentManager) && "All Platform Courses"}
               </h2>
               <p className="text-xs text-slate-500">
-                {isInstructor &&
-                  "You can edit and delete your own courses. Courses by other instructors are view-only."}
-                {isStudent && "Browse courses and click enroll to join."}
-                {(isAdmin || isContentManager) &&
-                  "Manage, edit, or delete any course on the platform."}
+                Click any course to open its full details, curriculum, and lesson manager.
               </p>
             </div>
 
@@ -562,6 +503,10 @@ export default function DashboardPage() {
                         .join(", ")
                     : null;
 
+                const lessonCount = Array.isArray(course.lessons)
+                  ? course.lessons.length
+                  : 0;
+
                 return (
                   <div
                     key={docId}
@@ -573,9 +518,12 @@ export default function DashboardPage() {
                   >
                     <div className="space-y-2.5">
                       <div className="flex items-start justify-between gap-2">
-                        <h3 className="text-lg font-bold text-[#0a192f] leading-snug line-clamp-2">
+                        <Link
+                          href={`/courses/${docId}`}
+                          className="text-lg font-bold text-[#0a192f] leading-snug line-clamp-2 hover:text-amber-900 transition-colors"
+                        >
                           {course.title}
-                        </h3>
+                        </Link>
                         <span className="px-2.5 py-1 text-xs font-bold text-amber-950 bg-amber-100/90 border border-amber-300/80 rounded-lg shrink-0">
                           ৳{course.price !== undefined ? course.price : 0}
                         </span>
@@ -585,70 +533,56 @@ export default function DashboardPage() {
                         {course.description || "No description provided."}
                       </p>
 
-                      {/* Instructor badge */}
-                      {instructorName && (
-                        <div className="pt-1">
-                          <span className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        {instructorName && (
+                          <span className="text-[11px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">
                             Instructor: {instructorName}
                           </span>
-                        </div>
-                      )}
+                        )}
+                        <span className="text-[11px] font-medium text-amber-900 bg-amber-50 border border-amber-200/70 px-2 py-0.5 rounded-md">
+                          📖 {lessonCount} {lessonCount === 1 ? "Lesson" : "Lessons"}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                      {/* 1. MATCH: Show Edit & Delete if User is Owner (or Admin/Content Manager) */}
-                      {isMyCourse && (
+                      {/* 1. If Course Owner (or Admin/Content Manager): Link to Course Page */}
+                      {isMyCourse ? (
                         <div className="flex items-center gap-2 w-full justify-between">
-                          <span className="text-[11px] font-semibold text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded">
-                            {isInstructor ? "Your Course" : "Admin Managed"}
-                          </span>
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => setViewingCourse(course)}
-                              className="px-2.5 py-1.5 text-xs font-medium text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors"
-                            >
-                              View
-                            </button>
-                            <button
-                              onClick={() => openEditModal(course)}
-                              className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => handleDeleteCourse(course)}
-                              className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
-                            >
-                              Delete
-                            </button>
-                          </div>
+                          {isInstructor && (
+                            <span className="text-[11px] font-semibold text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded">
+                              Your Course
+                            </span>
+                          )}
+                          <Link
+                            href={`/courses/${docId}`}
+                            className="px-3.5 py-2 text-xs font-semibold text-white bg-[#0a192f] hover:bg-[#132c52] rounded-xl transition-colors ml-auto"
+                          >
+                            Manage Course & Lessons →
+                          </Link>
                         </div>
-                      )}
-
-                      {/* 2. NO MATCH for Instructor: Show only View button */}
-                      {!isMyCourse && isInstructor && (
+                      ) : !isStudent ? (
+                        /* 2. Non-owner Instructor: View Course link */
                         <div className="flex items-center justify-between w-full">
                           <span className="text-[11px] text-slate-400 font-medium">
-                            Created by another instructor
+                            Other Instructor
                           </span>
-                          <button
-                            onClick={() => setViewingCourse(course)}
+                          <Link
+                            href={`/courses/${docId}`}
                             className="px-3.5 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
                           >
-                            View
-                          </button>
+                            View Curriculum
+                          </Link>
                         </div>
-                      )}
-
-                      {/* 3. Student View: View & Enroll */}
-                      {isStudent && (
+                      ) : (
+                        /* 3. Student: Curriculum Link & Enroll Button */
                         <div className="w-full flex items-center gap-2">
-                          <button
-                            onClick={() => setViewingCourse(course)}
-                            className="px-3 py-2 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+                          <Link
+                            href={`/courses/${docId}`}
+                            className="px-3 py-2 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors text-center"
                           >
-                            View
-                          </button>
+                            Curriculum
+                          </Link>
                           {isEnrolled ? (
                             <button
                               disabled
@@ -688,82 +622,13 @@ export default function DashboardPage() {
         </div>
       </main>
 
-      {/* View Course Details Modal */}
-      {viewingCourse && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="w-full max-w-lg bg-white border border-slate-200 rounded-2xl shadow-xl p-6 sm:p-8 space-y-5 animate-in fade-in zoom-in duration-150">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <span className="text-[11px] font-semibold text-amber-900 bg-amber-100 px-2 py-0.5 rounded uppercase tracking-wider">
-                  Course Overview
-                </span>
-                <h3 className="text-xl font-bold text-[#0a192f] mt-1.5">
-                  {viewingCourse.title}
-                </h3>
-              </div>
-              <button
-                onClick={() => setViewingCourse(null)}
-                className="text-slate-400 hover:text-slate-600 text-lg font-bold"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="space-y-4 text-sm">
-              <div className="bg-slate-50 p-4 rounded-xl space-y-2 border border-slate-200/80">
-                <div className="flex justify-between items-center text-xs">
-                  <span className="text-slate-500">Course Price:</span>
-                  <span className="font-bold text-[#0a192f] text-sm">
-                    ৳{viewingCourse.price !== undefined ? viewingCourse.price : 0}
-                  </span>
-                </div>
-                {viewingCourse.Instructors && viewingCourse.Instructors.length > 0 && (
-                  <div className="flex justify-between items-center text-xs border-t border-slate-200/60 pt-2">
-                    <span className="text-slate-500">Instructors:</span>
-                    <span className="font-semibold text-slate-800">
-                      {viewingCourse.Instructors.map((i) => i.username || i.email).join(", ")}
-                    </span>
-                  </div>
-                )}
-                <div className="flex justify-between items-center text-xs border-t border-slate-200/60 pt-2">
-                  <span className="text-slate-500">Published:</span>
-                  <span className="text-slate-700">
-                    {viewingCourse.createdAt
-                      ? new Date(viewingCourse.createdAt).toLocaleDateString()
-                      : "Recently"}
-                  </span>
-                </div>
-              </div>
-
-              <div>
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
-                  Description
-                </h4>
-                <p className="text-slate-700 leading-relaxed whitespace-pre-line bg-slate-50/50 p-3.5 rounded-xl border border-slate-100">
-                  {viewingCourse.description || "No description provided."}
-                </p>
-              </div>
-            </div>
-
-            <div className="pt-2 flex justify-end">
-              <button
-                onClick={() => setViewingCourse(null)}
-                className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Create / Edit Course Modal */}
+      {/* Create Course Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-xl p-6 sm:p-8 space-y-6 animate-in fade-in zoom-in duration-150">
             <div className="flex items-center justify-between">
               <h3 className="text-xl font-bold text-[#0a192f]">
-                {editingCourse ? "Edit Course" : "Create New Course"}
+                Create New Course
               </h3>
               <button
                 onClick={() => setIsModalOpen(false)}
@@ -870,9 +735,7 @@ export default function DashboardPage() {
                       Saving...
                     </>
                   ) : (
-                    <span>
-                      {editingCourse ? "Update Course" : "Create Course"}
-                    </span>
+                    <span>Create Course</span>
                   )}
                 </button>
               </div>
