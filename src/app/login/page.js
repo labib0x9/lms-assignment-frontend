@@ -12,6 +12,30 @@ const ROLES = [
   { id: "admin", label: "Admin" },
 ];
 
+const DEMO_ACCOUNTS = [
+  {
+    label: "Student",
+    identifier: "labibfaisal9834@gmail.com",
+    password: "!@@###1Aa",
+    role: "student",
+    color: "bg-blue-50 text-blue-900 border-blue-200 hover:bg-blue-100",
+  },
+  {
+    label: "Instructor 1",
+    identifier: "admin@example.com",
+    password: "password!1A",
+    role: "instructor",
+    color: "bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100",
+  },
+  {
+    label: "Instructor 2",
+    identifier: "ins1@example.com",
+    password: "password!1A",
+    role: "instructor",
+    color: "bg-purple-50 text-purple-900 border-purple-200 hover:bg-purple-100",
+  },
+];
+
 export default function LoginPage() {
   const router = useRouter();
   const [selectedRole, setSelectedRole] = useState("student");
@@ -21,6 +45,13 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+
+  const handleApplyDemo = (demo) => {
+    setEmail(demo.identifier);
+    setPassword(demo.password);
+    setSelectedRole(demo.role);
+    setErrorMessage("");
+  };
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -90,6 +121,25 @@ export default function LoginPage() {
             <p className="text-sm text-slate-500">
               Select your role and enter your credentials to continue
             </p>
+          </div>
+
+          {/* Quick Demo Logins Box */}
+          <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl space-y-2">
+            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
+              Quick Demo Accounts (Click to Fill)
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              {DEMO_ACCOUNTS.map((demo, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => handleApplyDemo(demo)}
+                  className={`px-2.5 py-1.5 text-xs font-medium border rounded-lg transition-colors text-center ${demo.color}`}
+                >
+                  {demo.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* 4 Roles Selector */}
