@@ -453,6 +453,44 @@ export async function deleteLesson(lessonDocId) {
 }
 
 /**
+ * Fetch a single lesson by documentId (includes populated course relation)
+ * @param {string|number} lessonDocId
+ */
+export async function fetchLessonById(lessonDocId) {
+  try {
+    const token = getAuthToken();
+    const headers = {
+      "Content-Type": "application/json",
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/api/lessons/${lessonDocId}?populate=*`, {
+      method: "GET",
+      headers,
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const errorMsg =
+        data.error?.message ||
+        data.message ||
+        `Failed to fetch lesson (${response.status})`;
+      throw new Error(errorMsg);
+    }
+
+    return { success: true, data: data.data || data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || "Failed to fetch lesson details.",
+    };
+  }
+}
+
+/**
  * Helper to get currently logged in user from localStorage
  */
 export function getCurrentUser() {

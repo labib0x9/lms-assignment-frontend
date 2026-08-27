@@ -521,17 +521,24 @@ export default function CourseDetailsPage() {
                 /* Lessons List: Only show lesson titles */
                 <div className="space-y-2.5">
                   {course.lessons.map((lesson, idx) => (
-                    <div
+                    <Link
                       key={lesson.documentId || lesson.id || idx}
-                      className="bg-white border border-slate-200/90 rounded-xl p-4 shadow-2xs transition-all flex items-center gap-3"
+                      href={`/courses/${documentId}/lessons/${lesson.documentId || lesson.id}`}
+                      className="bg-white border border-slate-200/90 hover:border-amber-300 hover:shadow-xs rounded-xl p-4 transition-all flex items-center justify-between group"
                     >
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-950 bg-amber-100 border border-amber-300/70 px-2 py-0.5 rounded-md shrink-0">
-                        Lesson {lesson.order || idx + 1}
+                      <div className="flex items-center gap-3">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-950 bg-amber-100 border border-amber-300/70 px-2 py-0.5 rounded-md shrink-0">
+                          Lesson {lesson.order || idx + 1}
+                        </span>
+                        <h3 className="text-sm font-semibold text-[#0a192f] group-hover:text-amber-900 transition-colors">
+                          {lesson.title}
+                        </h3>
+                      </div>
+                      <span className="text-xs font-semibold text-slate-400 group-hover:text-[#0a192f] transition-colors flex items-center gap-1">
+                        <span>Read Lesson</span>
+                        <span>→</span>
                       </span>
-                      <h3 className="text-sm font-semibold text-[#0a192f]">
-                        {lesson.title}
-                      </h3>
-                    </div>
+                    </Link>
                   ))}
                 </div>
               )}
