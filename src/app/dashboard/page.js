@@ -8,6 +8,8 @@ import {
   logoutUser,
   fetchCourses,
   createCourse,
+  enrollInCourse,
+  fetchMyEnrollments,
 } from "@/lib/api";
 
 export default function DashboardPage() {
@@ -24,6 +26,10 @@ export default function DashboardPage() {
 
   // Student enrollment tracking
   const [enrolledCourseIds, setEnrolledCourseIds] = useState([]);
+  const [loadingEnrollments, setLoadingEnrollments] = useState(false);
+
+  // Filter tab: "all" or "enrolled" (for student), "all" or "authored" (for instructor)
+  const [filterTab, setFilterTab] = useState("all");
 
   // Course Modal state (Create)
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -45,15 +51,49 @@ export default function DashboardPage() {
     }
   }, [router]);
 
-  // Load enrolled courses for student from localStorage
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = localStorage.getItem("academy_enrolled_courses");
-        if (saved) setEnrolledCourseIds(JSON.parse(saved));
-      } catch {}
+  // Determine user role
+  const roleName =
+    user?.role?.name ||
+    (typeof user?.role === "string" ? user?.role : "Student");
+  const roleType = (
+    user?.role?.type ||
+    (typeof user?.role === "string" ? user?.role : "student")
+  ).toLowerCase();
+
+  const isStudent = roleType === "student";
+  const isInstructor = roleType === "instructor";
+  const isAdmin = roleType === "admin";
+  const isContentManager = roleType === "content_manager";
+  const canCreateCourse = isInstructor || isAdmin || isContentManager;
+
+  // Load enrolled courses from API for student
+  const loadEnrollments = useCallback(async (isManual = false) => {
+    if (isStudent) {
+      setLoadingEnrollments(true);
+      const res = await fetchMyEnrollments();
+      setLoadingEnrollments(false);
+
+      if (res.success && Array.isArray(res.data)) {
+        const enrolledIds = res.data
+          .map((enroll) => {
+            const c = enroll.course;
+            return c?.documentId || (typeof c === "string" ? c : null);
+          })
+          .filter(Boolean);
+        setEnrolledCourseIds(enrolledIds);
+        if (isManual) {
+          setActionSuccess(`Refreshed! Found ${enrolledIds.length} enrolled courses.`);
+          setTimeout(() => setActionSuccess(""), 4000);
+        }
+      }
     }
-  }, []);
+  }, [isStudent]);
+
+  useEffect(() => {
+    if (user && isStudent) {
+      loadEnrollments();
+    }
+  }, [user, isStudent, loadEnrollments]);
 
   // Fetch courses from Strapi backend
   const loadCourses = useCallback(async () => {
@@ -79,21 +119,6 @@ export default function DashboardPage() {
     logoutUser();
     router.push("/login");
   };
-
-  // Determine user role
-  const roleName =
-    user?.role?.name ||
-    (typeof user?.role === "string" ? user?.role : "Student");
-  const roleType = (
-    user?.role?.type ||
-    (typeof user?.role === "string" ? user?.role : "student")
-  ).toLowerCase();
-
-  const isStudent = roleType === "student";
-  const isInstructor = roleType === "instructor";
-  const isAdmin = roleType === "admin";
-  const isContentManager = roleType === "content_manager";
-  const canCreateCourse = isInstructor || isAdmin || isContentManager;
 
   // Match current active user's documentId with the course's Instructors list
   const isOwnerOfCourse = (course) => {
@@ -164,17 +189,20 @@ export default function DashboardPage() {
   };
 
   // Student Enroll
-  const handleEnroll = (course) => {
+  const handleEnroll = async (course) => {
     const docId = String(course.documentId || course.id);
-    if (enrolledCourseIds.includes(docId)) return;
+    setActionError("");
+    setActionSuccess("");
 
-    const updated = [...enrolledCourseIds, docId];
-    setEnrolledCourseIds(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("academy_enrolled_courses", JSON.stringify(updated));
+    const result = await enrollInCourse(docId);
+    if (result.success) {
+      setActionSuccess(`Successfully enrolled in "${course.title}"! 🎉`);
+      await loadEnrollments();
+      setTimeout(() => setActionSuccess(""), 4000);
+    } else {
+      setActionError(result.error);
+      setTimeout(() => setActionError(""), 5000);
     }
-    setActionSuccess(`Successfully enrolled in "${course.title}"! 🎉`);
-    setTimeout(() => setActionSuccess(""), 4000);
   };
 
   if (loadingUser) {
@@ -208,6 +236,18 @@ export default function DashboardPage() {
 
   // Count courses authored by current user
   const myCoursesCount = courses.filter(isOwnerOfCourse).length;
+
+  // Filter courses based on active tab
+  const displayedCourses = courses.filter((course) => {
+    const docId = String(course.documentId || course.id);
+    if (isStudent && filterTab === "enrolled") {
+      return enrolledCourseIds.includes(docId);
+    }
+    if (isInstructor && filterTab === "authored") {
+      return isOwnerOfCourse(course);
+    }
+    return true;
+  });
 
   return (
     <div className="min-h-screen bg-[#faf9f6] text-[#0a192f] flex flex-col selection:bg-amber-200 selection:text-amber-900">
@@ -255,7 +295,7 @@ export default function DashboardPage() {
               {isInstructor &&
                 "Manage your courses, view curriculum, and publish new programs."}
               {isStudent &&
-                "Explore available engineering courses, track your enrollments, and start learning."}
+                "Explore available engineering courses, manage your enrollments, and start learning."}
               {(isAdmin || isContentManager) &&
                 "Platform administration portal for managing courses and curriculum."}
             </p>
@@ -283,11 +323,42 @@ export default function DashboardPage() {
               <span>Create New Course</span>
             </button>
           )}
+
+          {/* Student Shortcut to Enrolled Courses */}
+          {isStudent && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setFilterTab("enrolled");
+                  loadEnrollments(true);
+                }}
+                disabled={loadingEnrollments}
+                className="px-4 py-2.5 bg-[#0a192f] hover:bg-[#132c52] text-white text-xs font-semibold rounded-xl shadow-xs transition-colors flex items-center gap-2"
+              >
+                <svg
+                  className={`w-3.5 h-3.5 text-amber-400 ${
+                    loadingEnrollments ? "animate-spin" : ""
+                  }`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                  />
+                </svg>
+                <span>My Enrolled Courses ({enrolledCourseIds.length})</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Global Toast / Alerts */}
         {actionSuccess && (
-          <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-800 flex items-center gap-3">
+          <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-800 flex items-center gap-3 animate-in fade-in">
             <svg
               className="w-5 h-5 text-emerald-600 shrink-0"
               fill="none"
@@ -340,7 +411,12 @@ export default function DashboardPage() {
             </p>
           </div>
 
-          <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-1">
+          <div
+            onClick={() => isStudent && setFilterTab("enrolled")}
+            className={`bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-1 ${
+              isStudent ? "cursor-pointer hover:border-amber-400 transition-colors" : ""
+            }`}
+          >
             <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
               {isStudent ? "Your Enrolled Courses" : "Permissions"}
             </p>
@@ -353,7 +429,7 @@ export default function DashboardPage() {
             </p>
             <p className="text-xs text-slate-500">
               {isStudent
-                ? "Active learning programs"
+                ? "Click to view your learning programs"
                 : isInstructor
                 ? "Course management and lesson authoring"
                 : "Platform-wide management enabled"}
@@ -365,46 +441,141 @@ export default function DashboardPage() {
               Backend Status
             </p>
             <p className="text-3xl font-bold text-emerald-600">Connected</p>
-            <p className="text-xs text-slate-500">Strapi API v5</p>
+            <p className="text-xs text-slate-500">Strapi API v5 Live</p>
           </div>
         </div>
 
         {/* Courses Section */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
+        <div className="space-y-5">
+          {/* Header & Tabs */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-xl font-bold text-[#0a192f]">
-                {isInstructor && "All Courses & Your Authored Materials"}
-                {isStudent && "Available Courses"}
+                {isStudent &&
+                  (filterTab === "enrolled"
+                    ? "My Enrolled Courses"
+                    : "All Available Courses")}
+                {isInstructor &&
+                  (filterTab === "authored"
+                    ? "Your Authored Courses"
+                    : "All Platform Courses")}
                 {(isAdmin || isContentManager) && "All Platform Courses"}
               </h2>
               <p className="text-xs text-slate-500">
-                Click any course to open its full details, curriculum, and lesson manager.
+                {isStudent && filterTab === "enrolled"
+                  ? "Access your active enrollments and study lesson materials."
+                  : "Click any course to open its full details, curriculum, and lessons."}
               </p>
             </div>
 
-            <button
-              onClick={loadCourses}
-              disabled={loadingCourses}
-              className="text-xs font-medium text-slate-600 hover:text-slate-900 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition-colors"
-            >
-              <svg
-                className={`w-3.5 h-3.5 ${
-                  loadingCourses ? "animate-spin" : ""
-                }`}
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
+            {/* Filter Tabs & Refresh Controls */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Student Filter Tabs */}
+              {isStudent && (
+                <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 border border-slate-200">
+                  <button
+                    onClick={() => setFilterTab("all")}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                      filterTab === "all"
+                        ? "bg-white text-[#0a192f] shadow-2xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    All Courses ({courses.length})
+                  </button>
+                  <button
+                    onClick={() => {
+                      setFilterTab("enrolled");
+                      loadEnrollments();
+                    }}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                      filterTab === "enrolled"
+                        ? "bg-[#0a192f] text-white shadow-2xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    My Enrolled ({enrolledCourseIds.length})
+                  </button>
+                </div>
+              )}
+
+              {/* Instructor Filter Tabs */}
+              {isInstructor && (
+                <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 border border-slate-200">
+                  <button
+                    onClick={() => setFilterTab("all")}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                      filterTab === "all"
+                        ? "bg-white text-[#0a192f] shadow-2xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    All Courses ({courses.length})
+                  </button>
+                  <button
+                    onClick={() => setFilterTab("authored")}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                      filterTab === "authored"
+                        ? "bg-[#0a192f] text-white shadow-2xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Your Courses ({myCoursesCount})
+                  </button>
+                </div>
+              )}
+
+              {/* Dedicated Fetch Enrolled Courses button for students */}
+              {isStudent && (
+                <button
+                  onClick={() => loadEnrollments(true)}
+                  disabled={loadingEnrollments}
+                  className="text-xs font-medium text-slate-700 hover:text-slate-900 flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-colors shadow-2xs"
+                  title="Fetch and sync enrolled courses from API"
+                >
+                  <svg
+                    className={`w-3.5 h-3.5 text-amber-600 ${
+                      loadingEnrollments ? "animate-spin" : ""
+                    }`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                    />
+                  </svg>
+                  <span>Sync Enrollments</span>
+                </button>
+              )}
+
+              {/* Refresh Catalog */}
+              <button
+                onClick={loadCourses}
+                disabled={loadingCourses}
+                className="text-xs font-medium text-slate-600 hover:text-slate-900 flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-colors shadow-2xs"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                />
-              </svg>
-              Refresh
-            </button>
+                <svg
+                  className={`w-3.5 h-3.5 ${
+                    loadingCourses ? "animate-spin" : ""
+                  }`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+                Refresh
+              </button>
+            </div>
           </div>
 
           {/* Loading State */}
@@ -451,37 +622,66 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* Empty State */}
-          {!loadingCourses && !coursesError && courses.length === 0 && (
-            <div className="bg-white border border-slate-200/90 rounded-2xl p-12 text-center space-y-4 shadow-xs">
-              <div className="h-12 w-12 rounded-full bg-amber-50 text-amber-700 flex items-center justify-center mx-auto text-xl font-bold">
-                📚
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-base font-semibold text-[#0a192f]">
-                  No courses published yet
-                </h3>
-                <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                  {canCreateCourse
-                    ? "Click the button below to create and publish the first course."
-                    : "There are currently no courses published."}
-                </p>
-              </div>
-              {canCreateCourse && (
+          {/* Empty Enrolled State for Students */}
+          {!loadingCourses &&
+            !coursesError &&
+            isStudent &&
+            filterTab === "enrolled" &&
+            displayedCourses.length === 0 && (
+              <div className="bg-white border border-slate-200/90 rounded-2xl p-12 text-center space-y-4 shadow-xs">
+                <div className="h-14 w-14 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 flex items-center justify-center mx-auto text-2xl">
+                  🎓
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-base font-bold text-[#0a192f]">
+                    No enrolled courses yet
+                  </h3>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                    You have not enrolled in any courses yet. Browse all available courses and enroll to start your learning journey.
+                  </p>
+                </div>
                 <button
-                  onClick={openCreateModal}
-                  className="px-4 py-2 bg-[#0a192f] hover:bg-[#132c52] text-white text-xs font-medium rounded-xl transition-colors"
+                  onClick={() => setFilterTab("all")}
+                  className="px-5 py-2.5 bg-[#0a192f] hover:bg-[#132c52] text-white text-xs font-semibold rounded-xl shadow-xs transition-colors"
                 >
-                  + Create First Course
+                  Explore All Courses →
                 </button>
-              )}
-            </div>
-          )}
+              </div>
+            )}
+
+          {/* Empty Catalog State */}
+          {!loadingCourses &&
+            !coursesError &&
+            courses.length === 0 && (
+              <div className="bg-white border border-slate-200/90 rounded-2xl p-12 text-center space-y-4 shadow-xs">
+                <div className="h-12 w-12 rounded-full bg-amber-50 text-amber-700 flex items-center justify-center mx-auto text-xl font-bold">
+                  📚
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-base font-semibold text-[#0a192f]">
+                    No courses published yet
+                  </h3>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                    {canCreateCourse
+                      ? "Click the button below to create and publish the first course."
+                      : "There are currently no courses published."}
+                  </p>
+                </div>
+                {canCreateCourse && (
+                  <button
+                    onClick={openCreateModal}
+                    className="px-4 py-2 bg-[#0a192f] hover:bg-[#132c52] text-white text-xs font-medium rounded-xl transition-colors"
+                  >
+                    + Create First Course
+                  </button>
+                )}
+              </div>
+            )}
 
           {/* Courses Grid */}
-          {!loadingCourses && courses.length > 0 && (
+          {!loadingCourses && displayedCourses.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {courses.map((course) => {
+              {displayedCourses.map((course) => {
                 const docId = String(course.documentId || course.id);
                 const isEnrolled = enrolledCourseIds.includes(docId);
                 const isMyCourse = isOwnerOfCourse(course);
@@ -513,6 +713,8 @@ export default function DashboardPage() {
                     className={`bg-white border rounded-2xl p-6 shadow-xs flex flex-col justify-between transition-all space-y-4 ${
                       isMyCourse && isInstructor
                         ? "border-amber-300/80 ring-1 ring-amber-300/40 bg-amber-50/10"
+                        : isEnrolled && isStudent
+                        ? "border-emerald-300/80 ring-1 ring-emerald-300/40 bg-emerald-50/10"
                         : "border-slate-200/90 hover:border-slate-300"
                     }`}
                   >
@@ -584,9 +786,9 @@ export default function DashboardPage() {
                             Curriculum
                           </Link>
                           {isEnrolled ? (
-                            <button
-                              disabled
-                              className="flex-1 py-2 text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl cursor-default flex items-center justify-center gap-1.5"
+                            <Link
+                              href={`/courses/${docId}`}
+                              className="flex-1 py-2 text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl hover:bg-emerald-100/80 transition-colors flex items-center justify-center gap-1.5"
                             >
                               <svg
                                 className="w-4 h-4 text-emerald-600"
@@ -601,8 +803,8 @@ export default function DashboardPage() {
                                   d="M5 13l4 4L19 7"
                                 />
                               </svg>
-                              Enrolled ✓
-                            </button>
+                              Enrolled ✓ Go to Course
+                            </Link>
                           ) : (
                             <button
                               onClick={() => handleEnroll(course)}

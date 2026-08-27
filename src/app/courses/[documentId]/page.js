@@ -9,6 +9,8 @@ import {
   updateCourse,
   deleteCourse,
   createLesson,
+  enrollInCourse,
+  fetchMyEnrollments,
 } from "@/lib/api";
 
 export default function CourseDetailsPage() {
@@ -44,16 +46,43 @@ export default function CourseDetailsPage() {
   });
   const [lessonError, setLessonError] = useState("");
 
-  // Load user & enrollment info
+  // Load user info
   useEffect(() => {
     setUser(getCurrentUser());
-    if (typeof window !== "undefined") {
-      try {
-        const saved = localStorage.getItem("academy_enrolled_courses");
-        if (saved) setEnrolledCourseIds(JSON.parse(saved));
-      } catch {}
-    }
   }, []);
+
+  // Determine user roles
+  const roleType = (
+    user?.role?.type ||
+    (typeof user?.role === "string" ? user?.role : "student")
+  ).toLowerCase();
+
+  const isStudent = roleType === "student";
+  const isInstructor = roleType === "instructor";
+  const isAdmin = roleType === "admin";
+  const isContentManager = roleType === "content_manager";
+
+  // Load student enrollments from API
+  const loadEnrollments = useCallback(async () => {
+    if (isStudent && user) {
+      const res = await fetchMyEnrollments();
+      if (res.success && Array.isArray(res.data)) {
+        const enrolledIds = res.data
+          .map((enroll) => {
+            const c = enroll.course;
+            return c?.documentId || (typeof c === "string" ? c : null);
+          })
+          .filter(Boolean);
+        setEnrolledCourseIds(enrolledIds);
+      }
+    }
+  }, [isStudent, user]);
+
+  useEffect(() => {
+    if (user && isStudent) {
+      loadEnrollments();
+    }
+  }, [user, isStudent, loadEnrollments]);
 
   // Fetch course details
   const loadCourseData = useCallback(async () => {
@@ -74,17 +103,6 @@ export default function CourseDetailsPage() {
   useEffect(() => {
     loadCourseData();
   }, [loadCourseData]);
-
-  // Determine user roles
-  const roleType = (
-    user?.role?.type ||
-    (typeof user?.role === "string" ? user?.role : "student")
-  ).toLowerCase();
-
-  const isStudent = roleType === "student";
-  const isInstructor = roleType === "instructor";
-  const isAdmin = roleType === "admin";
-  const isContentManager = roleType === "content_manager";
 
   // Check if current user is owner/author of this course
   const isOwner = (() => {
@@ -119,22 +137,25 @@ export default function CourseDetailsPage() {
     return false;
   })();
 
-  // Handle Enrollment
-  const handleEnroll = () => {
+  // Handle Student Enrollment via API
+  const handleEnroll = async () => {
     if (!user) {
       router.push("/login");
       return;
     }
-    const docId = String(course?.documentId || course?.id);
-    if (enrolledCourseIds.includes(docId)) return;
+    const docId = String(course?.documentId || course?.id || documentId);
+    setToastError("");
+    setToastMessage("");
 
-    const updated = [...enrolledCourseIds, docId];
-    setEnrolledCourseIds(updated);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("academy_enrolled_courses", JSON.stringify(updated));
+    const res = await enrollInCourse(docId);
+    if (res.success) {
+      setToastMessage(`Successfully enrolled in "${course?.title || "this course"}"! 🎉`);
+      await loadEnrollments();
+      setTimeout(() => setToastMessage(""), 4000);
+    } else {
+      setToastError(res.error || "Failed to enroll");
+      setTimeout(() => setToastError(""), 5000);
     }
-    setToastMessage(`Successfully enrolled in "${course.title}"! 🎉`);
-    setTimeout(() => setToastMessage(""), 4000);
   };
 
   // Open Edit Course Modal

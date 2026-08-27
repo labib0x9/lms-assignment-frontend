@@ -491,6 +491,109 @@ export async function fetchLessonById(lessonDocId) {
 }
 
 /**
+ * Enroll the current logged-in student in a course
+ * @param {string} courseDocId - Course documentId
+ */
+export async function enrollInCourse(courseDocId) {
+  try {
+    const token = getAuthToken();
+    if (!token) throw new Error("You must be logged in to enroll.");
+
+    const response = await fetch(`${API_BASE_URL}/api/enrolls`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        data: {
+          course: courseDocId, // Pass course documentId
+        },
+      }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const errorMsg =
+        data.error?.message ||
+        data.message ||
+        `Enrollment failed (${response.status})`;
+      throw new Error(errorMsg);
+    }
+
+    return { success: true, data: data.data || data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || "Failed to enroll in course.",
+    };
+  }
+}
+
+/**
+ * Fetch all enrollments for the current logged-in user
+ * (Backend automatically scopes to current student's enrollments)
+ */
+export async function fetchMyEnrollments() {
+  try {
+    const token = getAuthToken();
+    if (!token) return { success: true, data: [] };
+
+    const response = await fetch(`${API_BASE_URL}/api/enrolls`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(data.error?.message || data.message || "Failed to fetch enrollments.");
+    }
+
+    // Handle both Strapi v5 { data: [...] } and array formats
+    const enrollments = Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
+    return { success: true, data: enrollments };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || "Failed to fetch enrollments.",
+    };
+  }
+}
+
+/**
+ * Unenroll from a course
+ * @param {string} enrollmentDocId - Enrollment documentId
+ */
+export async function unenrollCourse(enrollmentDocId) {
+  try {
+    const token = getAuthToken();
+    if (!token) throw new Error("You must be logged in.");
+
+    const response = await fetch(`${API_BASE_URL}/api/enrolls/${enrollmentDocId}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(data.error?.message || data.message || "Failed to unenroll.");
+    }
+
+    return { success: true, message: data.message || "Unenrolled successfully." };
+  } catch (error) {
+    return { success: false, error: error.message || "Failed to unenroll." };
+  }
+}
+
+/**
  * Helper to get currently logged in user from localStorage
  */
 export function getCurrentUser() {

@@ -9,6 +9,8 @@ import {
   fetchLessonById,
   updateLesson,
   deleteLesson,
+  enrollInCourse,
+  fetchMyEnrollments,
 } from "@/lib/api";
 
 /**
@@ -182,6 +184,7 @@ export default function LessonDetailsPage() {
 
   // Student enrollment state
   const [enrolledCourseIds, setEnrolledCourseIds] = useState([]);
+  const [isEnrolling, setIsEnrolling] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [toastError, setToastError] = useState("");
 
@@ -193,16 +196,43 @@ export default function LessonDetailsPage() {
     contents: "",
   });
 
-  // Load user info and enrolled list
+  // Load user info
   useEffect(() => {
     setUser(getCurrentUser());
-    if (typeof window !== "undefined") {
-      try {
-        const saved = localStorage.getItem("academy_enrolled_courses");
-        if (saved) setEnrolledCourseIds(JSON.parse(saved));
-      } catch {}
-    }
   }, []);
+
+  // Determine user role
+  const roleType = (
+    user?.role?.type ||
+    (typeof user?.role === "string" ? user?.role : "student")
+  ).toLowerCase();
+
+  const isStudent = roleType === "student";
+  const isInstructor = roleType === "instructor";
+  const isAdmin = roleType === "admin";
+  const isContentManager = roleType === "content_manager";
+
+  // Load student enrollments
+  const loadEnrollments = useCallback(async () => {
+    if (user && isStudent) {
+      const res = await fetchMyEnrollments();
+      if (res.success && Array.isArray(res.data)) {
+        const enrolledIds = res.data
+          .map((enroll) => {
+            const c = enroll.course;
+            return c?.documentId || (typeof c === "string" ? c : null);
+          })
+          .filter(Boolean);
+        setEnrolledCourseIds(enrolledIds);
+      }
+    }
+  }, [user, isStudent]);
+
+  useEffect(() => {
+    if (user && isStudent) {
+      loadEnrollments();
+    }
+  }, [user, isStudent, loadEnrollments]);
 
   // Fetch lesson and course data
   const loadData = useCallback(async () => {
@@ -231,17 +261,6 @@ export default function LessonDetailsPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
-
-  // Determine user role
-  const roleType = (
-    user?.role?.type ||
-    (typeof user?.role === "string" ? user?.role : "student")
-  ).toLowerCase();
-
-  const isStudent = roleType === "student";
-  const isInstructor = roleType === "instructor";
-  const isAdmin = roleType === "admin";
-  const isContentManager = roleType === "content_manager";
 
   // Check if current user is owner of the parent course
   const isOwner = (() => {
@@ -277,6 +296,41 @@ export default function LessonDetailsPage() {
   })();
 
   const isEnrolled = enrolledCourseIds.includes(String(documentId));
+
+  // Check if error is due to not being enrolled
+  const isPolicyOrEnrollmentError =
+    Boolean(error) &&
+    (error.toLowerCase().includes("policy") ||
+      error.toLowerCase().includes("forbidden") ||
+      error.toLowerCase().includes("enroll") ||
+      error.toLowerCase().includes("403") ||
+      error.toLowerCase().includes("permission"));
+
+  const showEnrollmentPrompt = !isOwner && (!lesson || isPolicyOrEnrollmentError);
+
+  // Student Enroll Handler
+  const handleEnroll = async () => {
+    if (!user) {
+      router.push("/login");
+      return;
+    }
+    setIsEnrolling(true);
+    setToastError("");
+    setToastMessage("");
+
+    const res = await enrollInCourse(documentId);
+    setIsEnrolling(false);
+
+    if (res.success) {
+      setToastMessage("Successfully enrolled! Loading your lesson notes... 🎉");
+      await loadEnrollments();
+      await loadData();
+      setTimeout(() => setToastMessage(""), 4000);
+    } else {
+      setToastError(res.error || "Enrollment failed. Please try again.");
+      setTimeout(() => setToastError(""), 5000);
+    }
+  };
 
   // Open Edit Modal
   const openEditModal = () => {
@@ -363,7 +417,7 @@ export default function LessonDetailsPage() {
             </Link>
             <span className="text-slate-300">/</span>
             <span className="text-xs font-semibold text-amber-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/60 truncate max-w-[150px]">
-              {lesson?.title || "Lesson"}
+              {lesson?.title || "Lesson Details"}
             </span>
           </div>
 
@@ -445,8 +499,96 @@ export default function LessonDetailsPage() {
           </div>
         )}
 
-        {/* Error State */}
-        {!loading && error && (
+        {/* 1. Enrollment Required Prompt (When student hasn't enrolled or Policy Failed) */}
+        {!loading && showEnrollmentPrompt && (
+          <div className="bg-white border border-amber-200/80 rounded-3xl p-8 sm:p-12 shadow-sm text-center space-y-6 max-w-2xl mx-auto">
+            <div className="w-16 h-16 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl flex items-center justify-center mx-auto text-2xl shadow-xs">
+              🔒
+            </div>
+
+            <div className="space-y-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-950 bg-amber-100 border border-amber-300/80 px-2.5 py-1 rounded-lg">
+                Enrollment Required
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#0a192f]">
+                Unlock Full Lesson Curriculum
+              </h2>
+              <p className="text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
+                You must be enrolled in <strong className="text-slate-900">{course?.title || "this course"}</strong> to read this lesson, access markdown notes, and view study materials.
+              </p>
+            </div>
+
+            {/* Course Summary Pill */}
+            {course && (
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-wrap items-center justify-center gap-4 text-xs">
+                <div>
+                  <span className="text-slate-500">Price:</span>{" "}
+                  <strong className="text-amber-950 font-bold text-sm">৳{course.price !== undefined ? course.price : 0} BDT</strong>
+                </div>
+                <span className="text-slate-300">•</span>
+                <div>
+                  <span className="text-slate-500">Curriculum:</span>{" "}
+                  <strong className="text-slate-900">{Array.isArray(course.lessons) ? course.lessons.length : 0} Lessons</strong>
+                </div>
+              </div>
+            )}
+
+            {/* Enroll CTA */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+              {user ? (
+                <button
+                  onClick={handleEnroll}
+                  disabled={isEnrolling}
+                  className="w-full sm:w-auto px-7 py-3 text-sm font-semibold text-white bg-[#0a192f] hover:bg-[#132c52] rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2 disabled:opacity-75"
+                >
+                  {isEnrolling ? (
+                    <>
+                      <svg
+                        className="animate-spin h-4 w-4 text-white"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        ></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8v8H4z"
+                        ></path>
+                      </svg>
+                      <span>Enrolling...</span>
+                    </>
+                  ) : (
+                    <span>Enroll Now (৳{course?.price !== undefined ? course.price : 0})</span>
+                  )}
+                </button>
+              ) : (
+                <Link
+                  href="/login"
+                  className="w-full sm:w-auto px-7 py-3 text-sm font-semibold text-white bg-[#0a192f] hover:bg-[#132c52] rounded-xl shadow-xs transition-colors text-center"
+                >
+                  Sign In to Enroll
+                </Link>
+              )}
+
+              <Link
+                href={`/courses/${documentId}`}
+                className="w-full sm:w-auto px-5 py-3 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors text-center"
+              >
+                View Course Overview
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {/* 2. Generic Error State (e.g. 404 Lesson Not Found for enrolled users or authors) */}
+        {!loading && !showEnrollmentPrompt && error && (
           <div className="bg-red-50 border border-red-200 rounded-2xl p-10 text-center space-y-3">
             <p className="text-base font-bold text-red-800">Unable to load lesson</p>
             <p className="text-xs text-red-600 max-w-md mx-auto">{error}</p>
@@ -459,7 +601,7 @@ export default function LessonDetailsPage() {
           </div>
         )}
 
-        {/* Lesson Body View */}
+        {/* 3. Lesson Content View (When authorized & enrolled) */}
         {!loading && lesson && (
           <div className="space-y-6">
             {/* Lesson Header Banner */}
