@@ -8,6 +8,14 @@
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 /**
+ * Helper to get the auth token from localStorage
+ */
+export function getAuthToken() {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("academy_token");
+}
+
+/**
  * Perform login request to Strapi backend
  * @param {Object} credentials - { identifier, password, role }
  */
@@ -138,6 +146,174 @@ export async function requestPasswordReset({ email }) {
     return {
       success: false,
       error: error.message || "Failed to connect to backend server.",
+    };
+  }
+}
+
+/**
+ * Fetch list of courses from Strapi backend
+ * Accessible by all roles and unauthenticated public visitors
+ */
+export async function fetchCourses() {
+  try {
+    const token = getAuthToken();
+    const headers = {
+      "Content-Type": "application/json",
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/api/courses`, {
+      method: "GET",
+      headers,
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const errorMsg =
+        data.error?.message ||
+        data.message ||
+        `Failed to fetch courses (${response.status})`;
+      throw new Error(errorMsg);
+    }
+
+    // Handle both Strapi v5 { data: [...] } and direct array
+    const courses = Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
+    return { success: true, data: courses, meta: data.meta };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || "Failed to fetch courses from backend.",
+      data: [],
+    };
+  }
+}
+
+/**
+ * Create a new course (Admin, Content Manager, Instructor only)
+ * @param {Object} courseData - { title, description, price }
+ */
+export async function createCourse({ title, description, price }) {
+  try {
+    const token = getAuthToken();
+    if (!token) {
+      throw new Error("You must be logged in to create a course.");
+    }
+
+    const response = await fetch(`${API_BASE_URL}/api/courses`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        data: {
+          title,
+          description,
+          price: Number(price),
+        },
+      }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const errorMsg =
+        data.error?.message ||
+        data.message ||
+        `Course creation failed (${response.status})`;
+      throw new Error(errorMsg);
+    }
+
+    return { success: true, data: data.data || data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || "Failed to create course.",
+    };
+  }
+}
+
+/**
+ * Update an existing course (Admin, Content Manager, Instructor only)
+ * @param {string|number} documentIdOrId
+ * @param {Object} courseData - { title, description, price }
+ */
+export async function updateCourse(documentIdOrId, { title, description, price }) {
+  try {
+    const token = getAuthToken();
+    if (!token) {
+      throw new Error("You must be logged in to update a course.");
+    }
+
+    const response = await fetch(`${API_BASE_URL}/api/courses/${documentIdOrId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        data: {
+          title,
+          description,
+          price: Number(price),
+        },
+      }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const errorMsg =
+        data.error?.message ||
+        data.message ||
+        `Course update failed (${response.status})`;
+      throw new Error(errorMsg);
+    }
+
+    return { success: true, data: data.data || data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || "Failed to update course.",
+    };
+  }
+}
+
+/**
+ * Delete a course (Admin, Content Manager, Instructor only)
+ * @param {string|number} documentIdOrId
+ */
+export async function deleteCourse(documentIdOrId) {
+  try {
+    const token = getAuthToken();
+    if (!token) {
+      throw new Error("You must be logged in to delete a course.");
+    }
+
+    const response = await fetch(`${API_BASE_URL}/api/courses/${documentIdOrId}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      const errorMsg =
+        data.error?.message ||
+        data.message ||
+        `Course deletion failed (${response.status})`;
+      throw new Error(errorMsg);
+    }
+
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || "Failed to delete course.",
     };
   }
 }
