@@ -713,6 +713,192 @@ export async function fetchAllProgresses() {
   }
 }
 
+// ==========================================
+// 🎓 STUDENT QUIZ APIS
+// ==========================================
+
+/**
+ * 1. Fetch quizzes for an enrolled course (correct answers are hidden for students)
+ * @param {string} courseDocId - Course documentId
+ */
+export async function fetchQuizzesByCourse(courseDocId) {
+  try {
+    const token = getAuthToken();
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE_URL}/api/quizzes/course/${courseDocId}`, {
+      headers,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error?.message || "Failed to fetch quizzes.");
+    return { success: true, data: data.data || [] };
+  } catch (error) {
+    return { success: false, error: error.message || "Failed to fetch quizzes." };
+  }
+}
+
+/**
+ * 1b. Fetch a single quiz by documentId
+ * @param {string} quizDocId - Quiz documentId
+ */
+export async function fetchQuizById(quizDocId) {
+  try {
+    const token = getAuthToken();
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE_URL}/api/quizzes/${quizDocId}`, {
+      headers,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error?.message || "Failed to fetch quiz.");
+    return { success: true, data: data.data || data };
+  } catch (error) {
+    return { success: false, error: error.message || "Failed to fetch quiz." };
+  }
+}
+
+/**
+ * 2. Submit answers for instant server-side auto-grading
+ * @param {string} quizDocId - Quiz documentId
+ * @param {Array<{ question_id: string, selected_answer: string }>} answers
+ */
+export async function submitQuizAnswers(quizDocId, answers) {
+  try {
+    const token = getAuthToken();
+    if (!token) throw new Error("You must be logged in as a student.");
+
+    const res = await fetch(`${API_BASE_URL}/api/quizzes/${quizDocId}/submit`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ data: { answers } }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error?.message || "Failed to submit quiz.");
+    return { success: true, data: data.data || data };
+  } catch (error) {
+    return { success: false, error: error.message || "Failed to submit quiz." };
+  }
+}
+
+/**
+ * 3. Fetch current student's latest submission & score for a quiz
+ * @param {string} quizDocId - Quiz documentId
+ */
+export async function fetchMyQuizSubmission(quizDocId) {
+  try {
+    const token = getAuthToken();
+    if (!token) return { success: false, error: "Not logged in" };
+
+    const res = await fetch(`${API_BASE_URL}/api/quizzes/${quizDocId}/my-submission`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json().catch(() => ({}));
+    return { success: res.ok, data: data.data };
+  } catch (error) {
+    return { success: false, error: error.message || "Failed to fetch submission." };
+  }
+}
+
+// ==========================================
+// 👨‍🏫 INSTRUCTOR & ADMIN MANAGEMENT APIS
+// ==========================================
+
+/**
+ * 4. Create a new Quiz for a course
+ * @param {{ title: string, course: string }} quizData
+ */
+export async function createQuiz(quizData) {
+  try {
+    const token = getAuthToken();
+    if (!token) throw new Error("Authentication required.");
+
+    const res = await fetch(`${API_BASE_URL}/api/quizzes`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ data: quizData }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error?.message || "Failed to create quiz.");
+    return { success: true, data: data.data || data };
+  } catch (error) {
+    return { success: false, error: error.message || "Failed to create quiz." };
+  }
+}
+
+/**
+ * 5. Add a Question to a Quiz
+ * @param {{ quiz: string, question_text: string, options: string[], correct_answer: string, points?: number }} questionData
+ */
+export async function createQuestion(questionData) {
+  try {
+    const token = getAuthToken();
+    if (!token) throw new Error("Authentication required.");
+
+    const res = await fetch(`${API_BASE_URL}/api/questions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ data: questionData }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error?.message || "Failed to add question.");
+    return { success: true, data: data.data || data };
+  } catch (error) {
+    return { success: false, error: error.message || "Failed to add question." };
+  }
+}
+
+/**
+ * 6. Delete a Quiz
+ * @param {string} quizDocId - Quiz documentId
+ */
+export async function deleteQuiz(quizDocId) {
+  try {
+    const token = getAuthToken();
+    if (!token) throw new Error("Authentication required.");
+
+    const res = await fetch(`${API_BASE_URL}/api/quizzes/${quizDocId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return { success: res.ok };
+  } catch (error) {
+    return { success: false, error: error.message || "Failed to delete quiz." };
+  }
+}
+
+/**
+ * 7. Delete a Question
+ * @param {string} questionDocId - Question documentId
+ */
+export async function deleteQuestion(questionDocId) {
+  try {
+    const token = getAuthToken();
+    if (!token) throw new Error("Authentication required.");
+
+    const res = await fetch(`${API_BASE_URL}/api/questions/${questionDocId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return { success: res.ok };
+  } catch (error) {
+    return { success: false, error: error.message || "Failed to delete question." };
+  }
+}
+
 /**
  * Helper to get currently logged in user from localStorage
  */
