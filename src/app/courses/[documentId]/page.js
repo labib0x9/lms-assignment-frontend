@@ -11,6 +11,7 @@ import {
   createLesson,
   enrollInCourse,
   fetchMyEnrollments,
+  fetchCourseProgress,
 } from "@/lib/api";
 
 export default function CourseDetailsPage() {
@@ -23,8 +24,9 @@ export default function CourseDetailsPage() {
   const [error, setError] = useState("");
   const [user, setUser] = useState(null);
 
-  // Student enrollment state
+  // Student enrollment and progress state
   const [enrolledCourseIds, setEnrolledCourseIds] = useState([]);
+  const [courseProgress, setCourseProgress] = useState(null);
   const [toastMessage, setToastMessage] = useState("");
   const [toastError, setToastError] = useState("");
 
@@ -62,12 +64,26 @@ export default function CourseDetailsPage() {
   const isAdmin = roleType === "admin";
   const isContentManager = roleType === "content_manager";
 
+  // Load course progress for enrolled student
+  const loadCourseProgress = useCallback(async () => {
+    if (isStudent && user && documentId) {
+      const res = await fetchCourseProgress(documentId);
+      if (res.success && res.data) {
+        setCourseProgress(res.data);
+      }
+    }
+  }, [isStudent, user, documentId]);
+
   // Load student enrollments from API
   const loadEnrollments = useCallback(async () => {
     if (isStudent && user) {
-      const res = await fetchMyEnrollments();
-      if (res.success && Array.isArray(res.data)) {
-        const enrolledIds = res.data
+      const [enrollRes] = await Promise.all([
+        fetchMyEnrollments(),
+        loadCourseProgress(),
+      ]);
+
+      if (enrollRes.success && Array.isArray(enrollRes.data)) {
+        const enrolledIds = enrollRes.data
           .map((enroll) => {
             const c = enroll.course;
             return c?.documentId || (typeof c === "string" ? c : null);
@@ -76,13 +92,14 @@ export default function CourseDetailsPage() {
         setEnrolledCourseIds(enrolledIds);
       }
     }
-  }, [isStudent, user]);
+  }, [isStudent, user, loadCourseProgress]);
 
   useEffect(() => {
     if (user && isStudent) {
       loadEnrollments();
+      loadCourseProgress();
     }
-  }, [user, isStudent, loadEnrollments]);
+  }, [user, isStudent, loadEnrollments, loadCourseProgress]);
 
   // Fetch course details
   const loadCourseData = useCallback(async () => {
@@ -461,6 +478,54 @@ export default function CourseDetailsPage() {
                 </div>
               </div>
 
+              {/* Course Progress Section for Enrolled Student */}
+              {isStudent && isEnrolled && (() => {
+                const completed = Number(
+                  courseProgress?.completed_count !== undefined
+                    ? courseProgress.completed_count
+                    : courseProgress?.completed_lessons || 0
+                );
+                const total = Number(
+                  courseProgress?.total_lessons ||
+                    (Array.isArray(course?.lessons) ? course.lessons.length : 0)
+                );
+                const percentage =
+                  courseProgress?.percentage !== undefined
+                    ? Number(courseProgress.percentage)
+                    : total > 0
+                    ? Math.min(Math.round((completed / total) * 100), 100)
+                    : 0;
+                const isFinished =
+                  (completed >= total && total > 0) || Boolean(courseProgress?.completed_at);
+
+                return (
+                  <div className="p-4 sm:p-5 bg-amber-50/60 border border-amber-200/80 rounded-2xl space-y-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold">
+                      <span className="text-[#0a192f] flex items-center gap-1.5 font-bold">
+                        <span>Your Learning Progress</span>
+                        {isFinished && (
+                          <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md">
+                            🏆 Course Completed
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-amber-950 font-bold text-sm">
+                        {percentage}%
+                      </span>
+                    </div>
+
+                    <div className="w-full bg-slate-200/80 h-2.5 rounded-full overflow-hidden border border-slate-300/60">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          isFinished ? "bg-emerald-500" : "bg-amber-500"
+                        }`}
+                        style={{ width: `${percentage}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Course Meta Footer */}
               <div className="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between text-xs text-slate-500 gap-3">
                 <div>
@@ -539,28 +604,56 @@ export default function CourseDetailsPage() {
                   )}
                 </div>
               ) : (
-                /* Lessons List: Only show lesson titles */
+                /* Lessons List: With completion indicators for enrolled students */
                 <div className="space-y-2.5">
-                  {course.lessons.map((lesson, idx) => (
-                    <Link
-                      key={lesson.documentId || lesson.id || idx}
-                      href={`/courses/${documentId}/lessons/${lesson.documentId || lesson.id}`}
-                      className="bg-white border border-slate-200/90 hover:border-amber-300 hover:shadow-xs rounded-xl p-4 transition-all flex items-center justify-between group"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-950 bg-amber-100 border border-amber-300/70 px-2 py-0.5 rounded-md shrink-0">
-                          Lesson {lesson.order || idx + 1}
-                        </span>
-                        <h3 className="text-sm font-semibold text-[#0a192f] group-hover:text-amber-900 transition-colors">
-                          {lesson.title}
-                        </h3>
-                      </div>
-                      <span className="text-xs font-semibold text-slate-400 group-hover:text-[#0a192f] transition-colors flex items-center gap-1">
-                        <span>Read Lesson</span>
-                        <span>→</span>
-                      </span>
-                    </Link>
-                  ))}
+                  {course.lessons.map((lesson, idx) => {
+                    const lessonKey = lesson.documentId || lesson.id;
+                    const isDone =
+                      isStudent &&
+                      isEnrolled &&
+                      (courseProgress?.completed_lesson_ids?.includes(String(lesson.documentId)) ||
+                        courseProgress?.completed_lesson_ids?.includes(Number(lesson.id)) ||
+                        courseProgress?.completed_lesson_ids?.includes(String(lessonKey)));
+
+                    return (
+                      <Link
+                        key={lessonKey || idx}
+                        href={`/courses/${documentId}/lessons/${lesson.documentId || lesson.id}`}
+                        className={`bg-white border rounded-xl p-4 transition-all flex items-center justify-between group ${
+                          isDone
+                            ? "border-emerald-200 bg-emerald-50/20 hover:border-emerald-300"
+                            : "border-slate-200/90 hover:border-amber-300 hover:shadow-xs"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-base">{isDone ? "✅" : "📄"}</span>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-950 bg-amber-100 border border-amber-300/70 px-2 py-0.5 rounded-md shrink-0">
+                            Lesson {lesson.order || idx + 1}
+                          </span>
+                          <h3
+                            className={`text-sm font-semibold transition-colors ${
+                              isDone
+                                ? "text-slate-500 line-through group-hover:text-emerald-900"
+                                : "text-[#0a192f] group-hover:text-amber-900"
+                            }`}
+                          >
+                            {lesson.title}
+                          </h3>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {isDone && (
+                            <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-100/90 px-2 py-0.5 rounded-md">
+                              Done ✓
+                            </span>
+                          )}
+                          <span className="text-xs font-semibold text-slate-400 group-hover:text-[#0a192f] transition-colors flex items-center gap-1">
+                            <span>Read</span>
+                            <span>→</span>
+                          </span>
+                        </div>
+                      </Link>
+                    );
+                  })}
                 </div>
               )}
             </div>

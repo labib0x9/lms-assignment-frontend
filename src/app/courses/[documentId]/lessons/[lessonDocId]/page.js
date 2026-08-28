@@ -11,6 +11,8 @@ import {
   deleteLesson,
   enrollInCourse,
   fetchMyEnrollments,
+  toggleLessonProgress,
+  fetchCourseProgress,
 } from "@/lib/api";
 
 /**
@@ -182,8 +184,10 @@ export default function LessonDetailsPage() {
   const [error, setError] = useState("");
   const [user, setUser] = useState(null);
 
-  // Student enrollment state
+  // Student enrollment and progress state
   const [enrolledCourseIds, setEnrolledCourseIds] = useState([]);
+  const [courseProgress, setCourseProgress] = useState(null);
+  const [isUpdatingProgress, setIsUpdatingProgress] = useState(false);
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [toastError, setToastError] = useState("");
@@ -212,12 +216,26 @@ export default function LessonDetailsPage() {
   const isAdmin = roleType === "admin";
   const isContentManager = roleType === "content_manager";
 
+  // Load course progress for enrolled student
+  const loadCourseProgress = useCallback(async () => {
+    if (user && isStudent && documentId) {
+      const res = await fetchCourseProgress(documentId);
+      if (res.success && res.data) {
+        setCourseProgress(res.data);
+      }
+    }
+  }, [user, isStudent, documentId]);
+
   // Load student enrollments
   const loadEnrollments = useCallback(async () => {
     if (user && isStudent) {
-      const res = await fetchMyEnrollments();
-      if (res.success && Array.isArray(res.data)) {
-        const enrolledIds = res.data
+      const [enrollRes] = await Promise.all([
+        fetchMyEnrollments(),
+        loadCourseProgress(),
+      ]);
+
+      if (enrollRes.success && Array.isArray(enrollRes.data)) {
+        const enrolledIds = enrollRes.data
           .map((enroll) => {
             const c = enroll.course;
             return c?.documentId || (typeof c === "string" ? c : null);
@@ -226,13 +244,14 @@ export default function LessonDetailsPage() {
         setEnrolledCourseIds(enrolledIds);
       }
     }
-  }, [user, isStudent]);
+  }, [user, isStudent, loadCourseProgress]);
 
   useEffect(() => {
     if (user && isStudent) {
       loadEnrollments();
+      loadCourseProgress();
     }
-  }, [user, isStudent, loadEnrollments]);
+  }, [user, isStudent, loadEnrollments, loadCourseProgress]);
 
   // Fetch lesson and course data
   const loadData = useCallback(async () => {
@@ -243,6 +262,7 @@ export default function LessonDetailsPage() {
     const [lessonRes, courseRes] = await Promise.all([
       fetchLessonById(lessonDocId),
       fetchCourseById(documentId),
+      loadCourseProgress(),
     ]);
 
     setLoading(false);
@@ -256,11 +276,40 @@ export default function LessonDetailsPage() {
     if (courseRes.success && courseRes.data) {
       setCourse(courseRes.data);
     }
-  }, [lessonDocId, documentId]);
+  }, [lessonDocId, documentId, loadCourseProgress]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Handle Toggle Lesson Completion
+  const handleToggleLesson = async () => {
+    if (!user || !isStudent) return;
+    setIsUpdatingProgress(true);
+    setToastError("");
+    setToastMessage("");
+
+    const targetDocId = lesson?.documentId || lessonDocId;
+    const res = await toggleLessonProgress(targetDocId);
+    setIsUpdatingProgress(false);
+
+    if (res.success) {
+      setCourseProgress(res.data);
+      const isNowDone =
+        res.data?.completed_lesson_ids?.includes(String(targetDocId)) ||
+        res.data?.completed_lesson_ids?.includes(String(lessonDocId));
+
+      setToastMessage(
+        isNowDone
+          ? "🎉 Lesson marked as completed!"
+          : "↺ Lesson marked as incomplete."
+      );
+      setTimeout(() => setToastMessage(""), 4000);
+    } else {
+      setToastError(res.error || "Failed to update lesson progress.");
+      setTimeout(() => setToastError(""), 5000);
+    }
+  };
 
   // Check if current user is owner of the parent course
   const isOwner = (() => {
@@ -657,6 +706,86 @@ export default function LessonDetailsPage() {
                 <MarkdownRenderer content={lesson.contents} />
               </div>
             </div>
+
+            {/* Student Progress Completion Action Card */}
+            {isStudent && isEnrolled && (() => {
+              const completedLessonIds = Array.isArray(courseProgress?.completed_lesson_ids)
+                ? courseProgress.completed_lesson_ids
+                : [];
+              const isCompleted =
+                completedLessonIds.includes(String(lessonDocId)) ||
+                completedLessonIds.includes(String(lesson?.documentId)) ||
+                completedLessonIds.includes(Number(lesson?.id));
+
+              const completed = Number(
+                courseProgress?.completed_count !== undefined
+                  ? courseProgress.completed_count
+                  : courseProgress?.completed_lessons || 0
+              );
+              const total = Number(
+                courseProgress?.total_lessons ||
+                  (Array.isArray(course?.lessons) ? course.lessons.length : 0)
+              );
+              const percentage =
+                courseProgress?.percentage !== undefined
+                  ? Number(courseProgress.percentage)
+                  : total > 0
+                  ? Math.min(Math.round((completed / total) * 100), 100)
+                  : 0;
+              const isFinished =
+                (completed >= total && total > 0) || Boolean(courseProgress?.completed_at);
+
+              return (
+                <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-7 shadow-xs space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold uppercase tracking-wider text-[#0a192f]">
+                          Course Progress
+                        </span>
+                        {isFinished && (
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                            🏆 Completed
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs font-bold text-amber-950">
+                        {percentage}%
+                      </p>
+                    </div>
+
+                    {/* Mark as Complete / Completed (Click to Undo) Button */}
+                    <button
+                      onClick={handleToggleLesson}
+                      disabled={isUpdatingProgress}
+                      className={`px-4 py-2.5 text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-2 disabled:opacity-75 ${
+                        isCompleted
+                          ? "bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200"
+                          : "bg-[#0a192f] text-white hover:bg-[#132c52]"
+                      }`}
+                    >
+                      {isUpdatingProgress ? (
+                        <span>Updating...</span>
+                      ) : isCompleted ? (
+                        <span>✓ Completed (Click to Undo)</span>
+                      ) : (
+                        <span>Mark as Complete</span>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden border border-slate-200/80">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        isFinished ? "bg-emerald-500" : "bg-amber-500"
+                      }`}
+                      style={{ width: `${percentage}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Bottom Pagination: Previous / Next Lesson */}
             <div className="flex items-center justify-between pt-2">

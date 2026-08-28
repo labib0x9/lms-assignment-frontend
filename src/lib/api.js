@@ -594,6 +594,126 @@ export async function unenrollCourse(enrollmentDocId) {
 }
 
 /**
+ * 1. Toggle completion of a lesson (Marks complete or unmarks to incomplete)
+ * @param {string} lessonDocId - Lesson documentId
+ */
+export async function toggleLessonProgress(lessonDocId) {
+  try {
+    const token = getAuthToken();
+    if (!token) throw new Error("You must be logged in as a student.");
+
+    const response = await fetch(`${API_BASE_URL}/api/progresses/toggle-lesson`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        data: { lesson: lessonDocId },
+      }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error?.message || "Failed to update lesson progress.");
+    }
+    return { success: true, data: data.data || data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * 2. Mark a lesson as complete or uncomplete for a course (Legacy / Alternative)
+ * @param {string} courseDocId - Course documentId
+ * @param {'complete'|'uncomplete'} action - Defaults to 'complete'
+ */
+export async function updateCourseProgress(courseDocId, action = "complete") {
+  try {
+    const token = getAuthToken();
+    if (!token) throw new Error("You must be logged in as a student.");
+
+    const response = await fetch(`${API_BASE_URL}/api/progresses/update-progress`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        data: {
+          course: courseDocId,
+          action, // "complete" or "uncomplete"
+        },
+      }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error?.message || data.message || "Failed to update progress.");
+    }
+    return { success: true, data: data.data || data };
+  } catch (error) {
+    return { success: false, error: error.message || "Failed to update progress." };
+  }
+}
+
+/**
+ * 3. Fetch progress for a single specific course (includes list of completed lesson IDs)
+ * @param {string} courseDocId - Course documentId
+ */
+export async function fetchCourseProgress(courseDocId) {
+  try {
+    const token = getAuthToken();
+    if (!token) return { success: false, error: "Not authenticated" };
+
+    const response = await fetch(
+      `${API_BASE_URL}/api/progresses/course/${courseDocId}`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error?.message || data.message || "Failed to fetch course progress.");
+    }
+    return { success: true, data: data.data || data };
+  } catch (error) {
+    return { success: false, error: error.message || "Failed to fetch course progress." };
+  }
+}
+
+/**
+ * 4. Fetch progress for all courses enrolled by current student
+ */
+export async function fetchAllProgresses() {
+  try {
+    const token = getAuthToken();
+    if (!token) return { success: true, data: [] };
+
+    const response = await fetch(`${API_BASE_URL}/api/progresses`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error?.message || data.message || "Failed to fetch all progresses.");
+    }
+    return { success: true, data: Array.isArray(data.data) ? data.data : [] };
+  } catch (error) {
+    return { success: false, error: error.message || "Failed to fetch all progresses." };
+  }
+}
+
+/**
  * Helper to get currently logged in user from localStorage
  */
 export function getCurrentUser() {

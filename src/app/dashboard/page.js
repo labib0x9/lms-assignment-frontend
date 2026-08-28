@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -10,6 +10,7 @@ import {
   createCourse,
   enrollInCourse,
   fetchMyEnrollments,
+  fetchAllProgresses,
 } from "@/lib/api";
 
 export default function DashboardPage() {
@@ -24,8 +25,9 @@ export default function DashboardPage() {
   const [actionSuccess, setActionSuccess] = useState("");
   const [actionError, setActionError] = useState("");
 
-  // Student enrollment tracking
+  // Student enrollment and progress tracking
   const [enrolledCourseIds, setEnrolledCourseIds] = useState([]);
+  const [progressMap, setProgressMap] = useState({});
   const [loadingEnrollments, setLoadingEnrollments] = useState(false);
 
   // Filter tab: "all" or "enrolled" (for student), "all" or "authored" (for instructor)
@@ -66,34 +68,82 @@ export default function DashboardPage() {
   const isContentManager = roleType === "content_manager";
   const canCreateCourse = isInstructor || isAdmin || isContentManager;
 
-  // Load enrolled courses from API for student
-  const loadEnrollments = useCallback(async (isManual = false) => {
+  // Load progress for student's enrolled courses
+  const loadProgress = useCallback(async () => {
     if (isStudent) {
-      setLoadingEnrollments(true);
-      const res = await fetchMyEnrollments();
-      setLoadingEnrollments(false);
-
+      const res = await fetchAllProgresses();
       if (res.success && Array.isArray(res.data)) {
-        const enrolledIds = res.data
-          .map((enroll) => {
-            const c = enroll.course;
-            return c?.documentId || (typeof c === "string" ? c : null);
-          })
-          .filter(Boolean);
-        setEnrolledCourseIds(enrolledIds);
-        if (isManual) {
-          setActionSuccess(`Refreshed! Found ${enrolledIds.length} enrolled courses.`);
-          setTimeout(() => setActionSuccess(""), 4000);
-        }
+        const map = {};
+        res.data.forEach((p) => {
+          const cId =
+            p.course?.documentId || (typeof p.course === "string" ? p.course : null);
+          if (cId) {
+            const completedCount =
+              p.completed_count !== undefined
+                ? Number(p.completed_count)
+                : Number(p.completed_lessons || 0);
+            const totalLessons = Number(p.total_lessons || 0);
+            const percentage =
+              p.percentage !== undefined
+                ? Number(p.percentage)
+                : totalLessons > 0
+                ? Math.min(Math.round((completedCount / totalLessons) * 100), 100)
+                : 0;
+
+            map[cId] = {
+              completed_count: completedCount,
+              completed_lessons: completedCount,
+              total_lessons: totalLessons,
+              percentage: percentage,
+              completed_lesson_ids: Array.isArray(p.completed_lesson_ids)
+                ? p.completed_lesson_ids
+                : [],
+              completed_at: p.completed_at || null,
+            };
+          }
+        });
+        setProgressMap(map);
       }
     }
   }, [isStudent]);
 
+  // Load enrolled courses from API for student
+  const loadEnrollments = useCallback(
+    async (isManual = false) => {
+      if (isStudent) {
+        setLoadingEnrollments(true);
+        const [enrollRes] = await Promise.all([
+          fetchMyEnrollments(),
+          loadProgress(),
+        ]);
+        setLoadingEnrollments(false);
+
+        if (enrollRes.success && Array.isArray(enrollRes.data)) {
+          const enrolledIds = enrollRes.data
+            .map((enroll) => {
+              const c = enroll.course;
+              return c?.documentId || (typeof c === "string" ? c : null);
+            })
+            .filter(Boolean);
+          setEnrolledCourseIds(enrolledIds);
+          if (isManual) {
+            setActionSuccess(
+              `Refreshed! Found ${enrolledIds.length} enrolled courses.`
+            );
+            setTimeout(() => setActionSuccess(""), 4000);
+          }
+        }
+      }
+    },
+    [isStudent, loadProgress]
+  );
+
   useEffect(() => {
     if (user && isStudent) {
       loadEnrollments();
+      loadProgress();
     }
-  }, [user, isStudent, loadEnrollments]);
+  }, [user, isStudent, loadEnrollments, loadProgress]);
 
   // Fetch courses from Strapi backend
   const loadCourses = useCallback(async () => {
@@ -205,6 +255,45 @@ export default function DashboardPage() {
     }
   };
 
+  // Count courses authored by current user
+  const myCoursesCount = courses.filter(isOwnerOfCourse).length;
+
+  // Calculate overall progress across all enrolled courses (all_course_completed_lesson * 100 / all_course_lesson)
+  const overallStats = useMemo(() => {
+    if (!isStudent)
+      return { totalCompleted: 0, totalLessons: 0, overallPercentage: 0 };
+    let totalCompleted = 0;
+    let totalLessons = 0;
+    enrolledCourseIds.forEach((docId) => {
+      const prog = progressMap[docId];
+      if (prog) {
+        totalCompleted += Number(
+          prog.completed_count !== undefined
+            ? prog.completed_count
+            : prog.completed_lessons || 0
+        );
+        totalLessons += Number(prog.total_lessons || 0);
+      }
+    });
+    const overallPercentage =
+      totalLessons > 0
+        ? Math.min(Math.round((totalCompleted / totalLessons) * 100), 100)
+        : 0;
+    return { totalCompleted, totalLessons, overallPercentage };
+  }, [isStudent, enrolledCourseIds, progressMap]);
+
+  // Filter courses based on active tab
+  const displayedCourses = courses.filter((course) => {
+    const docId = String(course.documentId || course.id);
+    if (isStudent && filterTab === "enrolled") {
+      return enrolledCourseIds.includes(docId);
+    }
+    if (isInstructor && filterTab === "authored") {
+      return isOwnerOfCourse(course);
+    }
+    return true;
+  });
+
   if (loadingUser) {
     return (
       <div className="min-h-screen bg-[#faf9f6] flex items-center justify-center">
@@ -233,21 +322,6 @@ export default function DashboardPage() {
       </div>
     );
   }
-
-  // Count courses authored by current user
-  const myCoursesCount = courses.filter(isOwnerOfCourse).length;
-
-  // Filter courses based on active tab
-  const displayedCourses = courses.filter((course) => {
-    const docId = String(course.documentId || course.id);
-    if (isStudent && filterTab === "enrolled") {
-      return enrolledCourseIds.includes(docId);
-    }
-    if (isInstructor && filterTab === "authored") {
-      return isOwnerOfCourse(course);
-    }
-    return true;
-  });
 
   return (
     <div className="min-h-screen bg-[#faf9f6] text-[#0a192f] flex flex-col selection:bg-amber-200 selection:text-amber-900">
@@ -411,30 +485,52 @@ export default function DashboardPage() {
             </p>
           </div>
 
-          <div
-            onClick={() => isStudent && setFilterTab("enrolled")}
-            className={`bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-1 ${
-              isStudent ? "cursor-pointer hover:border-amber-400 transition-colors" : ""
-            }`}
-          >
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              {isStudent ? "Your Enrolled Courses" : "Permissions"}
-            </p>
-            <p className="text-3xl font-bold text-amber-900">
-              {isStudent
-                ? enrolledCourseIds.length
-                : isInstructor
-                ? "Author & Instructor"
-                : "Platform Administration"}
-            </p>
-            <p className="text-xs text-slate-500">
-              {isStudent
-                ? "Click to view your learning programs"
-                : isInstructor
-                ? "Course management and lesson authoring"
-                : "Platform-wide management enabled"}
-            </p>
-          </div>
+          {isStudent ? (
+            <div
+              onClick={() => setFilterTab("enrolled")}
+              className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-2 cursor-pointer hover:border-amber-400 transition-colors"
+            >
+              <div className="flex justify-between items-center">
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Overall Progress
+                </p>
+                <span className="text-xs font-bold text-amber-900 bg-amber-100/80 px-2 py-0.5 rounded-lg">
+                  {overallStats.overallPercentage}%
+                </span>
+              </div>
+
+              <p className="text-3xl font-bold text-[#0a192f]">
+                {overallStats.totalCompleted} / {overallStats.totalLessons}
+                <span className="text-xs text-slate-500 font-normal ml-1.5">
+                  Lessons Done
+                </span>
+              </p>
+              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200/60">
+                <div
+                  className={`h-full rounded-full transition-all duration-300 ${
+                    overallStats.overallPercentage === 100
+                      ? "bg-emerald-500"
+                      : "bg-amber-500"
+                  }`}
+                  style={{ width: `${overallStats.overallPercentage}%` }}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Permissions
+              </p>
+              <p className="text-3xl font-bold text-amber-900">
+                {isInstructor ? "Author & Instructor" : "Platform Administration"}
+              </p>
+              <p className="text-xs text-slate-500">
+                {isInstructor
+                  ? "Course management and lesson authoring"
+                  : "Platform-wide management enabled"}
+              </p>
+            </div>
+          )}
 
           <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-1">
             <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -745,6 +841,52 @@ export default function DashboardPage() {
                           📖 {lessonCount} {lessonCount === 1 ? "Lesson" : "Lessons"}
                         </span>
                       </div>
+
+                      {/* Progress Bar for Enrolled Students */}
+                      {isEnrolled && isStudent && (() => {
+                        const prog = progressMap[docId];
+                        const completed = Number(
+                          prog?.completed_count !== undefined
+                            ? prog.completed_count
+                            : prog?.completed_lessons || 0
+                        );
+                        const total = Number(prog?.total_lessons || lessonCount || 0);
+                        const percentage =
+                          prog?.percentage !== undefined && prog?.percentage !== null
+                            ? Number(prog.percentage)
+                            : total > 0
+                            ? Math.min(Math.round((completed / total) * 100), 100)
+                            : 0;
+                        const isFinished =
+                          (completed >= total && total > 0) || Boolean(prog?.completed_at);
+
+                        return (
+                          <div className="space-y-1.5 pt-2 border-t border-slate-100/80">
+                            <div className="flex justify-between items-center text-xs font-semibold">
+                              <span className="text-slate-600 flex items-center gap-1">
+                                <span>Progress</span>
+                                {isFinished && <span>🏆</span>}
+                              </span>
+                              <span className="text-amber-950 font-bold">
+                                {percentage}%
+                              </span>
+                            </div>
+                            <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200/70">
+                              <div
+                                className={`h-full rounded-full transition-all duration-500 ${
+                                  isFinished ? "bg-emerald-500" : "bg-amber-500"
+                                }`}
+                                style={{ width: `${percentage}%` }}
+                              />
+                            </div>
+                            {isFinished && (
+                              <span className="text-[11px] font-bold text-emerald-700 block">
+                                🏆 Course Completed!
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
