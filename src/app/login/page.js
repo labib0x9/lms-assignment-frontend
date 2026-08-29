@@ -14,36 +14,43 @@ const ROLES = [
 
 const DEMO_ACCOUNTS = [
   {
-    label: "Student",
-    identifier: "labibfaisal9834@gmail.com",
-    password: "!@@###1Aa",
+    label: "Student 1",
+    identifier: "student1@gmail.com",
+    password: "password!1A",
+    role: "student",
+    color: "bg-blue-50 text-blue-900 border-blue-200 hover:bg-blue-100",
+  },
+  {
+    label: "Student 2",
+    identifier: "student2@gmail.com",
+    password: "password!1A",
     role: "student",
     color: "bg-blue-50 text-blue-900 border-blue-200 hover:bg-blue-100",
   },
   {
     label: "Instructor 1",
-    identifier: "admin@example.com",
+    identifier: "instructor1@gmail.com",
     password: "password!1A",
     role: "instructor",
     color: "bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100",
   },
   {
     label: "Instructor 2",
-    identifier: "ins1@example.com",
+    identifier: "instructor2@gmail.com",
     password: "password!1A",
     role: "instructor",
     color: "bg-purple-50 text-purple-900 border-purple-200 hover:bg-purple-100",
   },
   {
     label: "Content Manager",
-    identifier: "content1@gmail.com",
+    identifier: "content@gmail.com",
     password: "Password!1Aa",
     role: "content_manager",
     color: "bg-emerald-50 text-emerald-900 border-emerald-200 hover:bg-emerald-100",
   },
   {
     label: "Admin",
-    identifier: "admin1@gmail.com",
+    identifier: "admin@gmail.com",
     password: "Password!1Aa",
     role: "admin",
     color: "bg-rose-50 text-rose-900 border-rose-200 hover:bg-rose-100",
@@ -172,11 +179,10 @@ export default function LoginPage() {
                       setSelectedRole(role.id);
                       setErrorMessage("");
                     }}
-                    className={`px-3.5 py-2.5 rounded-xl text-sm font-medium border transition-all flex items-center justify-between ${
-                      isSelected
-                        ? "bg-amber-50 border-amber-400 text-amber-950 ring-1 ring-amber-400 shadow-xs"
-                        : "bg-slate-50/50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-slate-300"
-                    }`}
+                    className={`px-3.5 py-2.5 rounded-xl text-sm font-medium border transition-all flex items-center justify-between ${isSelected
+                      ? "bg-amber-50 border-amber-400 text-amber-950 ring-1 ring-amber-400 shadow-xs"
+                      : "bg-slate-50/50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-slate-300"
+                      }`}
                   >
                     <span>{role.label}</span>
                     {isSelected && (
