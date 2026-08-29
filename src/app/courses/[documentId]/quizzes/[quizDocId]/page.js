@@ -36,7 +36,8 @@ export default function DedicatedQuizPage() {
   const [toastError, setToastError] = useState("");
 
   // Student Quiz Taking state
-  const [selectedAnswers, setSelectedAnswers] = useState({}); // { [question_id]: "Selected Option" }
+  // selectedAnswers stores 0-based integer indices: { [question_id]: number }
+  const [selectedAnswers, setSelectedAnswers] = useState({}); 
   const [isSubmittingQuiz, setIsSubmittingQuiz] = useState(false);
   const [submissionResult, setSubmissionResult] = useState(null);
   const [latestSubmission, setLatestSubmission] = useState(null);
@@ -198,17 +199,17 @@ export default function DedicatedQuizPage() {
     }
   };
 
-  // Student: Option Select
-  const handleOptionSelect = (qId, option) => {
-    setSelectedAnswers((prev) => ({ ...prev, [qId]: option }));
+  // Student: Option Select (stores 0-based integer index)
+  const handleOptionSelect = (qId, optIdx) => {
+    setSelectedAnswers((prev) => ({ ...prev, [qId]: Number(optIdx) }));
   };
 
-  // Student: Submit Answers
+  // Student: Submit Answers for Server-Side Auto-Grading
   const handleSubmitQuiz = async () => {
     const questionsList = quiz?.questions || [];
-    const answers = Object.entries(selectedAnswers).map(([qId, ans]) => ({
+    const answers = Object.entries(selectedAnswers).map(([qId, optIdx]) => ({
       question_id: qId,
-      selected_answer: ans,
+      selected_answer: Number(optIdx), // 0-based index (0, 1, 2, 3...)
     }));
 
     if (answers.length === 0 && questionsList.length > 0) {
@@ -223,11 +224,12 @@ export default function DedicatedQuizPage() {
     const res = await submitQuizAnswers(quizDocId, answers);
     setIsSubmittingQuiz(false);
 
-    if (res.success) {
+    if (res.success && res.data) {
       setSubmissionResult(res.data);
       setLatestSubmission(res.data);
       setToastMessage("Quiz submitted successfully! Auto-grading complete. 🎉");
       setTimeout(() => setToastMessage(""), 4000);
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } else {
       setToastError(res.error || "Failed to submit quiz.");
       setTimeout(() => setToastError(""), 5000);
@@ -243,10 +245,13 @@ export default function DedicatedQuizPage() {
       return;
     }
 
-    if (!questionForm.correct_answer || !validOptions.includes(questionForm.correct_answer)) {
+    if (questionForm.correct_answer === "" || !validOptions.includes(questionForm.correct_answer)) {
       alert("Please select a valid correct answer from your options.");
       return;
     }
+
+    // Determine 0-based correct answer index
+    const correctIndex = validOptions.indexOf(questionForm.correct_answer);
 
     setIsSubmittingQuestion(true);
     setToastError("");
@@ -255,7 +260,7 @@ export default function DedicatedQuizPage() {
       quiz: quizDocId,
       question_text: questionForm.question_text.trim(),
       options: validOptions,
-      correct_answer: questionForm.correct_answer.trim(),
+      correct_answer: correctIndex >= 0 ? correctIndex : questionForm.correct_answer.trim(),
       points: Number(questionForm.points) || 1,
     });
 
@@ -465,56 +470,178 @@ export default function DedicatedQuizPage() {
               </div>
             </div>
 
-            {/* Results Card if student submitted */}
+            {/* ========================================== */}
+            {/* 📊 RESULTS & QUESTION-BY-QUESTION REVIEW */}
+            {/* ========================================== */}
             {isStudent && submissionResult && (
-              <div className="bg-white border border-slate-200/90 rounded-3xl p-8 text-center space-y-4 shadow-xs">
-                <div className="text-5xl">
-                  {submissionResult.percentage >= 70 ? "🎉" : "📚"}
-                </div>
-
-                <div className="space-y-1">
-                  <h3 className="text-2xl font-bold text-[#0a192f]">
-                    {submissionResult.percentage >= 70
-                      ? "Quiz Completed Successfully!"
-                      : "Quiz Completed"}
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Your answers have been auto-graded by the server.
-                  </p>
-                </div>
-
-                <div className="p-5 bg-slate-50 border border-slate-200 rounded-2xl max-w-xs mx-auto space-y-1">
-                  <div className="text-3xl font-extrabold text-amber-950">
-                    {submissionResult.percentage}%
+              <div className="space-y-6 animate-in fade-in duration-200">
+                {/* Results Score Summary Card */}
+                <div className="bg-white border border-slate-200/90 rounded-3xl p-8 text-center space-y-5 shadow-xs">
+                  <div className="text-5xl">
+                    {submissionResult.percentage >= 70 ? "🎉" : "📚"}
                   </div>
-                  <p className="text-xs font-semibold text-slate-600">
-                    Score: {submissionResult.score} / {submissionResult.total_score || submissionResult.total_possible_score || questionsList.length}
-                  </p>
+
+                  <div className="space-y-1">
+                    <h3 className="text-2xl sm:text-3xl font-bold text-[#0a192f]">
+                      {submissionResult.percentage >= 70
+                        ? "Quiz Completed Successfully!"
+                        : "Quiz Completed"}
+                    </h3>
+                    <p className="text-xs sm:text-sm text-slate-500">
+                      Your answers have been auto-graded by the server. Review your performance below.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 max-w-sm mx-auto pt-1">
+                    <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-2xl">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-900">
+                        Score
+                      </p>
+                      <p className="text-2xl sm:text-3xl font-black text-amber-950 mt-0.5">
+                        {submissionResult.score} / {submissionResult.total_score || totalPoints}
+                      </p>
+                    </div>
+
+                    <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-emerald-900">
+                        Percentage
+                      </p>
+                      <p className="text-2xl sm:text-3xl font-black text-emerald-950 mt-0.5">
+                        {submissionResult.percentage}%
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                    <button
+                      onClick={() => {
+                        setSubmissionResult(null);
+                        setSelectedAnswers({});
+                      }}
+                      className="px-6 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors"
+                    >
+                      Retake Quiz ↺
+                    </button>
+                    <Link
+                      href={`/courses/${documentId}`}
+                      className="px-6 py-2.5 bg-[#0a192f] hover:bg-[#132c52] text-white text-xs font-semibold rounded-xl transition-colors"
+                    >
+                      Back to Course
+                    </Link>
+                  </div>
                 </div>
 
-                <div className="flex items-center justify-center gap-3 pt-2">
-                  <button
-                    onClick={() => {
-                      setSubmissionResult(null);
-                      setSelectedAnswers({});
-                    }}
-                    className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors"
-                  >
-                    Retake Quiz ↺
-                  </button>
-                  <Link
-                    href={`/courses/${documentId}`}
-                    className="px-6 py-2.5 bg-[#0a192f] hover:bg-[#132c52] text-white text-xs font-semibold rounded-xl transition-colors"
-                  >
-                    Back to Course
-                  </Link>
-                </div>
+                {/* Detailed Question-by-Question Review */}
+                {Array.isArray(submissionResult.answers) && submissionResult.answers.length > 0 && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-bold text-[#0a192f]">
+                        Question-by-Question Review
+                      </h3>
+                      <span className="text-xs text-slate-500">
+                        {submissionResult.answers.length} Questions Evaluated
+                      </span>
+                    </div>
+
+                    <div className="space-y-4">
+                      {submissionResult.answers.map((item, idx) => {
+                        const optionsList = Array.isArray(item.options) ? item.options : [];
+                        const isCorrect = Boolean(item.is_correct);
+
+                        return (
+                          <div
+                            key={item.question_id || idx}
+                            className={`bg-white border rounded-3xl p-6 shadow-xs space-y-4 transition-all ${
+                              isCorrect ? "border-emerald-200" : "border-red-200"
+                            }`}
+                          >
+                            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                              <h4 className="text-sm sm:text-base font-bold text-[#0a192f]">
+                                {idx + 1}. {item.question_text}
+                              </h4>
+                              <div className="flex items-center gap-2 shrink-0">
+                                {isCorrect ? (
+                                  <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded-lg flex items-center gap-1">
+                                    <span>✓ Correct</span>
+                                    <span>(+{item.points_awarded || 1} pt)</span>
+                                  </span>
+                                ) : (
+                                  <span className="text-[11px] font-bold text-red-800 bg-red-100 border border-red-300 px-2.5 py-1 rounded-lg flex items-center gap-1">
+                                    <span>✗ Incorrect</span>
+                                    <span>(0/{item.points_possible || 1} pt)</span>
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Options Breakdown */}
+                            <div className="space-y-2">
+                              {optionsList.map((opt, optIdx) => {
+                                const isStudentSelection = item.selected_answer === optIdx;
+                                const isCorrectAnswer = item.correct_answer === optIdx;
+
+                                let optStyle = "bg-slate-50 border-slate-200 text-slate-700";
+                                if (isCorrectAnswer) {
+                                  optStyle = "bg-emerald-50 border-emerald-400 text-emerald-950 font-bold ring-1 ring-emerald-400";
+                                } else if (isStudentSelection && !isCorrect) {
+                                  optStyle = "bg-red-50 border-red-400 text-red-950 font-bold ring-1 ring-red-400";
+                                }
+
+                                return (
+                                  <div
+                                    key={optIdx}
+                                    className={`w-full text-left p-3.5 rounded-2xl border text-xs sm:text-sm transition-all flex items-center justify-between gap-3 ${optStyle}`}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <div
+                                        className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 text-xs font-bold ${
+                                          isCorrectAnswer
+                                            ? "border-emerald-600 bg-emerald-600 text-white"
+                                            : isStudentSelection && !isCorrect
+                                            ? "border-red-600 bg-red-600 text-white"
+                                            : "border-slate-300 bg-white text-slate-500"
+                                        }`}
+                                      >
+                                        {isCorrectAnswer ? "✓" : isStudentSelection && !isCorrect ? "✗" : optIdx + 1}
+                                      </div>
+                                      <span>{opt}</span>
+                                    </div>
+
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      {isStudentSelection && isCorrect && (
+                                        <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                                          Your Choice (Correct ✓)
+                                        </span>
+                                      )}
+                                      {isStudentSelection && !isCorrect && (
+                                        <span className="text-[11px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded">
+                                          Your Choice (Incorrect ✗)
+                                        </span>
+                                      )}
+                                      {!isStudentSelection && isCorrectAnswer && (
+                                        <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                                          Correct Answer ✓
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
-            {/* Student Taking Questions Form */}
+            {/* ========================================== */}
+            {/* 📝 STUDENT QUIZ RUNNER (TAKING ASSESSMENT) */}
+            {/* ========================================== */}
             {isStudent && !submissionResult && (
-              <div className="space-y-6">
+              <div className="space-y-6 animate-in fade-in duration-200">
                 {questionsList.length === 0 ? (
                   <div className="bg-white border border-slate-200/90 rounded-3xl p-12 text-center space-y-3 shadow-xs">
                     <p className="text-sm text-slate-500 italic">
@@ -547,12 +674,12 @@ export default function DedicatedQuizPage() {
 
                           <div className="space-y-2.5">
                             {optionsList.map((opt, optIdx) => {
-                              const isSelected = selectedAnswers[qId] === opt;
+                              const isSelected = selectedAnswers[qId] === optIdx;
                               return (
                                 <button
                                   key={optIdx}
                                   type="button"
-                                  onClick={() => handleOptionSelect(qId, opt)}
+                                  onClick={() => handleOptionSelect(qId, optIdx)}
                                   className={`w-full text-left p-3.5 rounded-2xl border text-xs sm:text-sm font-medium transition-all flex items-center gap-3.5 ${
                                     isSelected
                                       ? "bg-amber-50/80 border-amber-500 text-amber-950 font-semibold ring-1 ring-amber-500/40"
@@ -605,7 +732,9 @@ export default function DedicatedQuizPage() {
               </div>
             )}
 
-            {/* Instructor / Admin Questions Management View */}
+            {/* ========================================== */}
+            {/* 👨‍🏫 INSTRUCTOR QUESTIONS MANAGEMENT VIEW */}
+            {/* ========================================== */}
             {isOwner && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
@@ -667,8 +796,9 @@ export default function DedicatedQuizPage() {
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                             {optionsList.map((opt, optIdx) => {
                               const isCorrect =
-                                q.correct_answer &&
-                                String(q.correct_answer).trim() === String(opt).trim();
+                                q.correct_answer === optIdx ||
+                                (q.correct_answer !== undefined &&
+                                  String(q.correct_answer).trim() === String(opt).trim());
                               return (
                                 <div
                                   key={optIdx}
@@ -773,7 +903,7 @@ export default function DedicatedQuizPage() {
                     .filter(Boolean)
                     .map((opt, idx) => (
                       <option key={idx} value={opt}>
-                        {opt}
+                        Option {idx + 1}: {opt}
                       </option>
                     ))}
                 </select>
