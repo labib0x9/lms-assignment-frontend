@@ -716,11 +716,8 @@ export default function CourseDetailsPage() {
                     (Array.isArray(course?.lessons) ? course.lessons.length : 0)
                 );
                 const percentage =
-                  courseProgress?.percentage !== undefined
-                    ? Number(courseProgress.percentage)
-                    : total > 0
-                    ? Math.min(Math.round((completed * 100) / total), 100)
-                    : 0;
+                    total > 0
+                    ? Math.round((completed * 100) / total) : 0;
                 const isFinished =
                   (completed >= total && total > 0) || Boolean(courseProgress?.completed_at);
 

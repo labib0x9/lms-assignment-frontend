@@ -277,8 +277,7 @@ export default function DashboardPage() {
     });
     const overallPercentage =
       totalLessons > 0
-        ? Math.min(Math.round((totalCompleted / totalLessons) * 100), 100)
-        : 0;
+        ? Math.round((totalCompleted / totalLessons) * 100) : 0;
     return { totalCompleted, totalLessons, overallPercentage };
   }, [isStudent, enrolledCourseIds, progressMap]);
 
