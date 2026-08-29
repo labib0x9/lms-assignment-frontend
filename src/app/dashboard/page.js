@@ -240,7 +240,7 @@ export default function DashboardPage() {
 
   // Student Enroll
   const handleEnroll = async (course) => {
-    const docId = String(course.documentId || course.id);
+    const docId = String(course.documentId);
     setActionError("");
     setActionSuccess("");
 
