@@ -602,7 +602,7 @@ export async function toggleLessonProgress(lessonDocId) {
     const token = getAuthToken();
     if (!token) throw new Error("You must be logged in as a student.");
 
-    const response = await fetch(`${API_BASE_URL}/api/progresses/toggle-lesson`, {
+    const response = await fetch(`${API_BASE_URL}/api/progresses/lesson/toggle`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
