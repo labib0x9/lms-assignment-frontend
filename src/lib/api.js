@@ -507,7 +507,7 @@ export async function enrollInCourse(courseDocId) {
       },
       body: JSON.stringify({
         data: {
-          course: courseDocId, // Pass course documentId
+          course: courseDocId,
         },
       }),
     });

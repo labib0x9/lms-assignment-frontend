@@ -44,14 +44,14 @@ const DEMO_ACCOUNTS = [
   {
     label: "Content Manager",
     identifier: "content@gmail.com",
-    password: "Password!1Aa",
+    password: "password!1A",
     role: "content_manager",
     color: "bg-emerald-50 text-emerald-900 border-emerald-200 hover:bg-emerald-100",
   },
   {
     label: "Admin",
     identifier: "admin@gmail.com",
-    password: "Password!1Aa",
+    password: "password!1A",
     role: "admin",
     color: "bg-rose-50 text-rose-900 border-rose-200 hover:bg-rose-100",
   },
